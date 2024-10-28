@@ -1,13 +1,12 @@
-import json
 import itertools
+import json
 from pathlib import Path
 
 import pytest
-from test_fast_tokenizer import check_save, check_tokenize, check_unknown
-
 import smirk
-from test_tokenize_smiles import smile_strings  # noqa
 
+from .test_fast_tokenizer import check_save, check_tokenize, check_unknown
+from .test_tokenize_smiles import smile_strings  # noqa
 
 SMILE_TEST_FILE = Path(__file__).parent.joinpath("smiles.txt")
 

@@ -3,11 +3,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
+import smirk
 from transformers import BatchEncoding
 from transformers.data import DataCollatorForLanguageModeling
 
-import smirk
-from test_tokenize_smiles import smile_strings  # noqa
+from .test_tokenize_smiles import smile_strings  # noqa
 
 
 def check_save(tokenizer):
@@ -24,6 +24,7 @@ def check_save(tokenizer):
     print("loaded: " + loaded.to_str())
     print("trained: " + tokenizer.to_str())
     assert isinstance(loaded, tokenizer.__class__)
+    assert tokenizer.to_str() == loaded.to_str()
 
     # Check pickling
     state = pickle.dumps(tokenizer)
@@ -93,13 +94,21 @@ def test_special_tokens():
     assert tokenizer.eos_token_id == vocab["[EOS]"]
 
 
-def test_pad(smile_strings):  # noqa F811
+@pytest.mark.parametrize("return_special_tokens_mask", [True, False, None])
+def test_pad(smile_strings, return_special_tokens_mask):  # noqa F811
     tokenizer = smirk.SmirkTokenizerFast()
-    code = tokenizer(smile_strings)
+    code = tokenizer(
+        smile_strings, return_special_tokens_mask=return_special_tokens_mask
+    )
     assert len(code["input_ids"][0]) != len(code["input_ids"][1])
     code = tokenizer.pad(code)
     assert len(code["input_ids"][0]) == len(code["input_ids"][1])
-    assert len(code["special_tokens_mask"][0]) == len(code["special_tokens_mask"][1])
+    if return_special_tokens_mask:
+        assert len(code["special_tokens_mask"][0]) == len(
+            code["special_tokens_mask"][1]
+        )
+    else:
+        assert "special_tokens_mask" not in code
 
 
 @pytest.mark.parametrize("return_offsets_mapping", [True, False, None])
@@ -108,7 +117,6 @@ def test_encode(return_offsets_mapping):
     kwargs = {"return_offsets_mapping": return_offsets_mapping}
     code = tokenizer("NCCc1cc(O)c(O)cc1", **kwargs)
     assert "input_ids" in code
-    assert "special_tokens_mask" in code
     assert "attention_mask" in code
     assert (
         tokenizer.decode(code["input_ids"], skip_special_tokens=True)
@@ -124,7 +132,6 @@ def test_encode_batch(smile_strings, return_offsets_mapping):  # noqa F811
     kwargs = {"return_offsets_mapping": return_offsets_mapping}
     batch = tokenizer(smile_strings, **kwargs)
     assert "input_ids" in batch
-    assert "special_tokens_mask" in batch
     assert "attention_mask" in batch
     assert (
         tokenizer.batch_decode_plus(batch["input_ids"], skip_special_tokens=True)
@@ -142,7 +149,6 @@ def test_collate(smile_strings):  # noqa F811
     code = tokenizer(smile_strings)
     assert len(code["input_ids"]) == len(smile_strings)
     assert isinstance(code, BatchEncoding)
-    assert "special_tokens_mask" in code.keys()
 
     # Collate batch
     collated_batch = collate(code)
@@ -152,7 +158,6 @@ def test_collate(smile_strings):  # noqa F811
     max_length = len(code["input_ids"][1])
     for k in [
         "input_ids",
-        "token_type_ids",
         "attention_mask",
         "labels",
     ]:

@@ -3,9 +3,9 @@ from importlib.resources import files
 from tempfile import NamedTemporaryFile
 
 import pytest
-from elements import all_elements
-
 from smirk.smirk import SmirkTokenizer
+
+from .elements import all_elements
 
 
 @pytest.fixture
