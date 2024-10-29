@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   linux:
     runs-on: ${{ matrix.platform.runner }}
@@ -31,14 +35,16 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: '3.11'
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.11 -i python3.10
           sccache: 'true'
           manylinux: auto
       - name: Upload wheels
@@ -53,8 +59,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install smirk --find-links dist --force-reinstall
-          pip install pytest
+          pip install smirk[test] --find-links dist --force-reinstall
           pytest
       - name: pytest
         if: ${{ !startsWith(matrix.platform.target, 'x86') && matrix.platform.target != 'ppc64' }}
@@ -64,12 +69,13 @@ jobs:
           distro: ubuntu22.04
           githubToken: ${{ github.token }}
           install: |
-            apt-get update
-            apt-get install -y --no-install-recommends python3 python3-pip
-            pip3 install -U pip pytest
-          run: |
             set -e
-            pip3 install smirk --find-links dist --force-reinstall
+            apt-get update
+            apt-get install -y --no-install-recommends python3 python3-pip python3-venv
+          run: |
+            python3 -m venv .venv
+            source .venv/bin/activate
+            pip install smirk[test] --find-links dist --force-reinstall
             pytest
 
   windows:
@@ -79,19 +85,20 @@ jobs:
         platform:
           - runner: windows-latest
             target: x64
-          - runner: windows-latest
-            target: x86
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: '3.11'
+          cache: 'pip'
           architecture: ${{ matrix.platform.target }}
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.11 -i python3.10
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
@@ -105,8 +112,7 @@ jobs:
           set -e
           python3 -m venv .venv
           source .venv/Scripts/activate
-          pip install smirk --find-links dist --force-reinstall
-          pip install pytest
+          pip install smirk[test] --find-links dist --force-reinstall
           pytest
 
   macos:
@@ -120,27 +126,29 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v5
         with:
-          python-version: 3.x
+          python-version: '3.11'
+          cache: 'pip'
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.platform.target }}
-          args: --release --out dist --find-interpreter
+          args: --release --out dist -i python3.11 -i python3.10
           sccache: 'true'
       - name: Upload wheels
         uses: actions/upload-artifact@v4
         with:
           name: wheels-macos-${{ matrix.platform.target }}
           path: dist
-      - name: pytest
+      - name: install
         run: |
           set -e
           python3 -m venv .venv
           source .venv/bin/activate
-          pip install smirk --find-links dist --force-reinstall
-          pip install pytest
+          pip install smirk[test] --find-links dist --force-reinstall
           pytest
 
   sdist:
