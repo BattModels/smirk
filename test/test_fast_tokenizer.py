@@ -1,3 +1,4 @@
+import json
 import pickle
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -56,6 +57,17 @@ def check_normalizer(tokenizer):
     assert tokenizer.tokenize(" COO ") == ["C", "O", "O"]
     assert tokenizer.tokenize("[Ca++]") == ["Ca", "+", "2"]
     assert tokenizer.tokenize("[C--]") == ["C", "-", "2"]
+
+
+def test_post_processor():
+    tok = smirk.SmirkTokenizerFast()
+    assert tok.post_processor == "{}"
+    tok = smirk.SmirkTokenizerFast(template="[CLS] $0 [SEP]")
+    pp = json.loads(tok.post_processor)
+    assert pp["type"] == "TemplateProcessing"
+    state = json.loads(tok.to_str())
+    assert state["post_processor"] == pp
+    check_save(tok)
 
 
 def check_unknown(tokenizer):

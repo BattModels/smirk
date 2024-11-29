@@ -27,6 +27,13 @@ SPECIAL_TOKENS = {
 
 class SmirkTokenizerFast(PreTrainedTokenizerBase):
     def __init__(self, tokenizer_file: Optional[str] = None, **kwargs):
+        """
+        SmirkTokenizerFast - A Chemically-Complete Tokenizer for OpenSMILES
+
+        Args:
+            template (Optional[str]):
+                A post-processing template. Defaults to None. For a BERT-like template, use: `[CLS] $0 [SEP]`
+        """
         # Create SmirkTokenizer
         default_vocab_file = files("smirk").joinpath("vocab_smiles.json")
         if tokenizer := kwargs.pop("tokenizer", None):
@@ -49,6 +56,9 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
 
         if kwargs.pop("add_special_tokens", True):
             self.add_special_tokens(SPECIAL_TOKENS)
+
+        if template := kwargs.pop("template", None):
+            tokenizer.post_processor = template
 
     def __len__(self) -> int:
         """Size of the full vocab with added tokens"""
@@ -280,6 +290,11 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
     def tokenize(self, text: str, add_special_tokens=False) -> list[str]:
         """Converts a string into a sequence of tokens"""
         return self._tokenizer.tokenize(text, add_special_tokens)
+
+    @property
+    def post_processor(self):
+        """Returns the json serialization of the post-processor"""
+        return self._tokenizer.post_processor
 
     def _save_pretrained(
         self,

@@ -11,6 +11,7 @@ use pyo3::{pyclass, pymethods, PyResult, Python};
 use regex::Regex;
 use tokenizers::decoders::fuse::Fuse;
 use tokenizers::models::wordlevel::WordLevel;
+use tokenizers::processors::template::{Template, TemplateProcessing};
 use tokenizers::{self, normalizers, DecoderWrapper, Model, NormalizerWrapper};
 use tokenizers::{
     AddedToken, EncodeInput, OffsetReferential, OffsetType, PaddingDirection, PaddingParams,
@@ -150,6 +151,36 @@ impl SmirkTokenizer {
                 .decode_batch(&sequences, skip_special_tokens)
                 .unwrap())
         })
+    }
+
+    #[getter]
+    fn get_post_processor(&self) -> PyResult<String> {
+        if let Some(post_processor) = self.tokenizer.get_post_processor() {
+            serde_json::to_string(&post_processor).map_err(|e| PyValueError::new_err(e.to_string()))
+        } else {
+            Ok("{}".to_string())
+        }
+    }
+
+    #[setter]
+    fn set_post_processor(&mut self, template: String) -> PyResult<()> {
+        let template =
+            Template::try_from(template).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let special_tokens = self
+            .tokenizer
+            .get_added_tokens_decoder()
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.content.to_owned()))
+            .collect::<Vec<(u32, String)>>()
+            .to_vec();
+
+        let tp = TemplateProcessing::builder()
+            .single(template)
+            .special_tokens(special_tokens)
+            .build()
+            .unwrap();
+        self.tokenizer.with_post_processor(tp);
+        Ok(())
     }
 
     #[pyo3(signature = (pretty = false))]
