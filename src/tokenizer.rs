@@ -11,11 +11,12 @@ use pyo3::{pyclass, pymethods, PyResult, Python};
 use regex::Regex;
 use tokenizers::decoders::fuse::Fuse;
 use tokenizers::models::wordlevel::WordLevel;
+use tokenizers::processors::template::{Template, TemplateProcessing};
 use tokenizers::{self, normalizers, DecoderWrapper, Model, NormalizerWrapper};
 use tokenizers::{
     AddedToken, EncodeInput, OffsetReferential, OffsetType, PaddingDirection, PaddingParams,
     PaddingStrategy, PostProcessorWrapper, PreTokenizedString, PreTokenizer, TokenizerBuilder,
-    TokenizerImpl,
+    TokenizerImpl, TruncationDirection, TruncationParams, TruncationStrategy,
 };
 
 type Tokenizer = TokenizerImpl<
@@ -152,6 +153,36 @@ impl SmirkTokenizer {
         })
     }
 
+    #[getter]
+    fn get_post_processor(&self) -> PyResult<String> {
+        if let Some(post_processor) = self.tokenizer.get_post_processor() {
+            serde_json::to_string(&post_processor).map_err(|e| PyValueError::new_err(e.to_string()))
+        } else {
+            Ok("{}".to_string())
+        }
+    }
+
+    #[setter]
+    fn set_post_processor(&mut self, template: String) -> PyResult<()> {
+        let template =
+            Template::try_from(template).map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let special_tokens = self
+            .tokenizer
+            .get_added_tokens_decoder()
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.content.to_owned()))
+            .collect::<Vec<(u32, String)>>()
+            .to_vec();
+
+        let tp = TemplateProcessing::builder()
+            .single(template)
+            .special_tokens(special_tokens)
+            .build()
+            .unwrap();
+        self.tokenizer.with_post_processor(tp);
+        Ok(())
+    }
+
     #[pyo3(signature = (pretty = false))]
     fn to_str(&self, pretty: bool) -> PyResult<String> {
         Ok(self.tokenizer.to_string(pretty).unwrap())
@@ -206,6 +237,14 @@ impl SmirkTokenizer {
             .to_vec()
     }
 
+    fn id_to_token(&self, index: u32) -> Option<String> {
+        self.tokenizer.id_to_token(index)
+    }
+
+    fn token_to_id(&self, token: &str) -> Option<u32> {
+        self.tokenizer.token_to_id(token)
+    }
+
     fn no_padding(&mut self) {
         self.tokenizer.with_padding(None);
     }
@@ -228,6 +267,7 @@ impl SmirkTokenizer {
                             ))),
                         }?
                     }
+                    "pad_to_multiple_of" => params.pad_to_multiple_of = value.extract().unwrap(),
                     "pad_id" => params.pad_id = value.extract().unwrap(),
                     "pad_type_id" => params.pad_type_id = value.extract().unwrap(),
                     "pad_token" => params.pad_token = value.extract().unwrap(),
@@ -242,6 +282,51 @@ impl SmirkTokenizer {
             }
         }
         self.tokenizer.with_padding(Some(params));
+        Ok(())
+    }
+
+    #[pyo3(signature = (**kwargs))]
+    fn with_truncation(&mut self, kwargs: Option<&PyDict>) -> PyResult<()> {
+        let mut params = TruncationParams::default();
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs {
+                let key: &str = key.extract().unwrap();
+                match key {
+                    "strategy" => {
+                        let value: &str = value.extract().unwrap();
+                        params.strategy = match value {
+                            "only_first" => Ok(TruncationStrategy::OnlyFirst),
+                            "only_second" => Ok(TruncationStrategy::OnlySecond),
+                            "longest_first" => Ok(TruncationStrategy::LongestFirst),
+                            other => Err(PyValueError::new_err(format!(
+                                "Unknown truncation strategy {}",
+                                other
+                            ))),
+                        }?
+                    }
+                    "max_length" => params.max_length = value.extract().unwrap(),
+                    "stride" => params.stride = value.extract().unwrap(),
+                    "direction" => {
+                        let value: &str = value.extract().unwrap();
+                        params.direction = match value {
+                            "left" => Ok(TruncationDirection::Left),
+                            "right" => Ok(TruncationDirection::Right),
+                            other => Err(PyValueError::new_err(format!(
+                                "Unknown trunction direction {}",
+                                other
+                            ))),
+                        }?
+                    }
+                    _ => println!("Unknown kwargs {}, ignoring", key),
+                }
+            }
+        }
+        let _ = self.tokenizer.with_truncation(Some(params));
+        Ok(())
+    }
+
+    fn no_truncation(&mut self) -> PyResult<()> {
+        let _ = self.tokenizer.with_truncation(None);
         Ok(())
     }
 

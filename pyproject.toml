@@ -1,6 +1,7 @@
 [project]
 name = "smirk"
 requires-python = ">=3.7"
+license = {file = "LICENSE"}
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -8,11 +9,15 @@ classifiers = [
 ]
 dependencies = [
     "transformers ~= 4.40",
-    "tokenizers >=0.19, <0.20",
 ]
 
 [project.optional-dependencies]
-test = [ "pytest" ]
+test = [
+    "pytest~=8.3",
+    "parameterized==0.9.0",
+    "torch",
+    "numpy",
+]
 
 [build-system]
 build-backend = "maturin"
