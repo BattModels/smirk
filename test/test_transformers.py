@@ -1,10 +1,10 @@
-import pytest
 import inspect
 import pickle
 from collections.abc import Mapping
-from tempfile import TemporaryDirectory
 from random import shuffle
+from tempfile import TemporaryDirectory
 
+import pytest
 import smirk
 from parameterized import parameterized_class
 from transformers import (
@@ -18,7 +18,7 @@ from .test_smirk_gpe import SMILE_TEST_FILE
 
 
 def get_smirk_gpe():
-    return smirk.SmirkTokenizerFast().train([str(SMILE_TEST_FILE)])
+    return smirk.train_gpe([str(SMILE_TEST_FILE)])
 
 
 def transformers_testname(cls, idx, input_dict):

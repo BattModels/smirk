@@ -1,9 +1,13 @@
-# Import Rust Binding
 import os
 from importlib.resources import files
 from typing import List, Optional, Union
 
-from transformers import AutoTokenizer, BatchEncoding, PreTrainedTokenizerBase
+from transformers import (
+    AutoTokenizer,
+    BatchEncoding,
+    PreTrainedTokenizerBase,
+    PreTrainedTokenizerFast,
+)
 from transformers.tokenization_utils_base import (
     AddedToken,
     PaddingStrategy,
@@ -11,6 +15,7 @@ from transformers.tokenization_utils_base import (
     TruncationStrategy,
 )
 from transformers.tokenization_utils_fast import TOKENIZER_FILE
+from transformers.utils import add_code_sample_docstrings
 
 from . import smirk as rs_smirk
 
@@ -23,16 +28,23 @@ SPECIAL_TOKENS = {
     "cls_token": "[CLS]",
     "mask_token": "[MASK]",
 }
+""" Default Special tokens used by the :py:class:`SmirkTokenizerFast`
+and :py:func:`SmirkSelfiesFast` tokenizers.
+"""
 
 
 class SmirkTokenizerFast(PreTrainedTokenizerBase):
-    def __init__(self, tokenizer_file: Optional[str] = None, **kwargs):
+    def __init__(self, tokenizer_file: Optional[os.PathLike] = None, **kwargs):
         """
-        SmirkTokenizerFast - A Chemically-Complete Tokenizer for OpenSMILES
+        A Chemically-Complete Tokenizer for OpenSMILES
 
-        Args:
-            template (Optional[str]):
-                A post-processing template. Defaults to None. For a BERT-like template, use: `[CLS] $0 [SEP]`
+        :param os.PathLike vocab_file: Path to a JSON encoded vocabulary mapping tokens to ids.
+        :param tokenizer_file: Path to a JSON serialize SmirkTokenizerFast tokenizers
+        :param str template: A :py:class:`post-processing template<tokenizers.processors.TemplateProcessing>`.
+            Defaults to no post-processing. For a BERT-like template, use: :code:`[CLS] $0 [SEP]`.
+        :param bool add_special_tokens: If true, adds the :py:data:`default special tokens<SPECIAL_TOKENS>` to the vocabulary.
+            Defaults to true.
+        :param kwargs: Additional kwargs are passed to :py:class:`transformers.PreTrainedTokenizerFast`
         """
         # Create SmirkTokenizer
         default_vocab_file = files("smirk").joinpath("vocab_smiles.json")
@@ -57,11 +69,11 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         if kwargs.pop("add_special_tokens", True):
             self.add_special_tokens(SPECIAL_TOKENS)
 
-        if template := kwargs.pop("template", None):
+        if template := kwargs.get("template", None):
             tokenizer.post_processor = template
 
     def __len__(self) -> int:
-        """Size of the full vocab with added tokens"""
+        """Size of the full vocabulary including added tokens"""
         return self._tokenizer.get_vocab_size(with_added_tokens=True)
 
     def __repr__(self):
@@ -71,13 +83,16 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         return True
 
     def to_str(self) -> str:
+        """Serialize the tokenizer into a JSON string"""
         return self._tokenizer.to_str()
 
     def get_vocab(self) -> dict[str, int]:
+        """Returns the vocabulary of the tokenzier as a dictionary"""
         return self._tokenizer.get_vocab(with_added_tokens=True)
 
     @property
     def vocab(self) -> dict[str, int]:
+        """The tokenzier's vocabulary"""
         return self.get_vocab()
 
     @property
@@ -87,6 +102,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
 
     @property
     def added_tokens_decoder(self) -> dict[int, AddedToken]:
+        """Mapping from id to :py:class:`AddedToken` for the added tokens"""
         return {
             id: AddedToken(content)
             for id, content in self._tokenizer.get_added_tokens_decoder().items()
@@ -94,6 +110,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
 
     @property
     def added_tokens_encoder(self) -> dict[str, int]:
+        """Mapping from added token to token id"""
         return {
             content: id
             for id, content in self._tokenizer.get_added_tokens_decoder().items()
@@ -102,6 +119,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
     def convert_ids_to_tokens(
         self, index: Union[int, List[int]]
     ) -> Union[str, List[str]]:
+        """Decode a token id, or a list of ids, into their token(s)"""
         if isinstance(index, int):
             return self._tokenizer.id_to_token(index)
         return [self._tokenizer.id_to_token(i) for i in index]
@@ -109,11 +127,13 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
     def convert_tokens_to_ids(
         self, token: Union[str, List[str]]
     ) -> Union[int, List[int]]:
+        """Convert a token, or list of tokens, into their token id(s)"""
         if isinstance(token, str):
             return self._tokenizer.token_to_id(token)
         return [self._tokenizer.token_to_id(t) for t in token]
 
     def convert_tokens_to_string(self, tokens: List[str]) -> str:
+        """Joins a list of tokens into a string."""
         return "".join(tokens)
 
     def _add_tokens(
@@ -201,6 +221,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         stride: int = 0,
         pad_to_multiple_of: Optional[int] = None,
     ):
+        """Configure truncation and padding options for the tokenizer"""
         if truncation_strategy == TruncationStrategy.DO_NOT_TRUNCATE:
             self._tokenizer.no_truncation()
         else:
@@ -293,7 +314,12 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
 
     @property
     def post_processor(self):
-        """Returns the json serialization of the post-processor"""
+        """
+        Returns the JSON serialization of the post-processor
+
+        .. tip:: This is not part of :py:class:`transformers.PreTrainedTokenizerFast`'s API.
+
+        """
         return self._tokenizer.post_processor
 
     def _save_pretrained(
@@ -311,26 +337,23 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         self._tokenizer.save(tokenizer_file)
         return file_names + (tokenizer_file,)
 
-    def train(self, files: list[str], **kwargs) -> "SmirkTokenizerFast":
-        """Train a SmirkPiece Model from files
-
-        files: List of files containing the corpus to train the tokenizer on
-        min_frequency: Minimum count for a pair to be considered for a merge
-        vocab_size: the target size of the final vocabulary
-        """
-        kwargs = {k: v for k, v in kwargs.items() if v is not None}
-        return SmirkTokenizerFast(tokenizer=self._tokenizer.train(files, **kwargs))
-
 
 # Register with AutoTokenizer
 AutoTokenizer.register("SmirkTokenizer", fast_tokenizer_class=SmirkTokenizerFast)
 
 
-def SmirkSelfiesFast(vocab=None, unk_token="[UNK]", add_special_tokens=True, **kwargs):
+def SmirkSelfiesFast(
+    vocab_file: Optional[os.PathLike] = None, unk_token="[UNK]", **kwargs
+) -> PreTrainedTokenizerFast:
     """Instantiate a Chemically-Consistent tokenizer for SELFIES
 
-    Defaults to a vocab of all possible SELFIES tokens plus the `[UNK]` for
-    the unknown token. Additional kwargs are passed to `PreTrainedTokenizerFast`
+    :param os.PathLike vocab_file: The vocabulary for the :py:class:`tokenizers.models.WordLevel` model.
+        The default vocabulary includes all possible SELFIES tokens
+    :param str unk_token: The unknown token to be used.
+    :param bool add_special_tokens: if true, adds the :py:data:`default special tokens<SPECIAL_TOKENS>`
+        to the vocabulary. Defaults to true.
+    :param kwargs: Additional kwargs are passed to :py:class:`transformers.PreTrainedTokenizerFast`
+
     """
     import json
     from importlib.resources import files
@@ -339,11 +362,11 @@ def SmirkSelfiesFast(vocab=None, unk_token="[UNK]", add_special_tokens=True, **k
     from tokenizers.models import WordLevel
     from tokenizers.normalizers import Strip
     from tokenizers.pre_tokenizers import Sequence, Split
-    from transformers import PreTrainedTokenizerFast
 
-    if vocab is None:
-        with open(files("smirk").joinpath("vocab_selfies.json"), "r") as fid:
-            vocab = json.load(fid)
+    vocab_file = vocab_file or files("smirk").joinpath("vocab_selfies.json")
+    assert isinstance(vocab_file, os.PathLike)
+    with open(vocab_file, "r") as fid:
+        vocab = json.load(fid)
 
     tok = Tokenizer(WordLevel(vocab, unk_token))
     # Regex generated using `opt/build_vocab.py -f smiles -t regex`
@@ -363,9 +386,41 @@ def SmirkSelfiesFast(vocab=None, unk_token="[UNK]", add_special_tokens=True, **k
         ]
     )
     tok.normalizer = Strip()
+    add_special_tokens = kwargs.pop("add_special_tokens", True)
     tok_tf = PreTrainedTokenizerFast(tokenizer_object=tok, **kwargs)
 
-    if kwargs.pop("add_special_tokens", True):
+    if add_special_tokens:
         tok_tf.add_special_tokens(SPECIAL_TOKENS)
 
     return tok_tf
+
+
+def train_gpe(
+    files: list[str],
+    ref: Optional[SmirkTokenizerFast] = None,
+    min_frequency: int = 0,
+    vocab_size: int = 1024,
+    merge_brackets: bool = False,
+    split_structure: bool = True,
+) -> SmirkTokenizerFast:
+    """
+    Train a Smirk-GPE Tokenizer from a corpus of SMILES encodings.
+
+    :param files: List of files containing the corpus to train the tokenizer on
+    :param ref: The initial tokenizer to start from when training. Defaults to `SmirkTokenizerFast()`
+        This determines the initial vocabulary and identity of the unknown token
+    :param min_frequency: Minimum count for a pair to be considered for a merge
+    :param vocab_size: The target size of the final vocabulary
+    :param merge_brackets: If true, merges with brackets (`[` or `]`) are allowed
+    :param split_structure: If true, will split SMILES encoding on structural elements,
+        before considering merges (i.e. merges across structural elements are not allowed)
+    """
+    ref = ref or SmirkTokenizerFast()
+    tokenizer = ref._tokenizer.train(
+        files,
+        min_frequency=min_frequency,
+        vocab_size=vocab_size,
+        merge_brackets=merge_brackets,
+        split_structure=split_structure,
+    )
+    return SmirkTokenizerFast(tokenizer=tokenizer)

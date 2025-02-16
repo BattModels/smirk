@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Mark version as dynamic in pyproject ([#2](https://github.com/BattModels/smirk/pull/2))
+- The vocab for `SmirkSelfiesFast` can now be set by passing a `vocab_file` ([#3](https://github.com/BattModels/smirk/pull/3))
+- The default unknown token for the rust `SmirkTokenzier` is now `[UNK]` matching the python default ([#3](https://github.com/BattModels/smirk/pull/3))
+
+### Removed
+
+- Renamed `SmirkSelfiesFast` `vocab` parameter to `vocab_file` ([#3](https://github.com/BattModels/smirk/pull/3))
+- Default for `--split-structure` is now `True` for `smirk.cli` and `train_gpe` ([#3](https://github.com/BattModels/smirk/pull/3))
+- Moved GPE training from a method (`SmirkTokenizerFast.train`) to a function (`smirk.train_gpe`) ([#3](https://github.com/BattModels/smirk/pull/3))
 
 ## [v0.1.1](https://github.com/BattModels/smirk/tree/v0.1.1) - 2024-12-09
 

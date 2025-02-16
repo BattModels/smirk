@@ -21,8 +21,7 @@ SMILE_TEST_FILE = Path(__file__).parent.joinpath("smiles.txt")
     ],
 )
 def trained(request):
-    tokenizer = smirk.SmirkTokenizerFast()
-    return tokenizer.train([str(SMILE_TEST_FILE)], **request.param)
+    return smirk.train_gpe([str(SMILE_TEST_FILE)], **request.param)
 
 
 def test_save(trained):
@@ -40,8 +39,7 @@ def test_train_smirk_piece(trained, smile_strings):  # noqa F811
 
 
 def test_vocab_size():
-    tokenizer = smirk.SmirkTokenizerFast()
-    trained = tokenizer.train([str(SMILE_TEST_FILE)], vocab_size=200)
+    trained = smirk.train_gpe([str(SMILE_TEST_FILE)], vocab_size=200)
     assert trained.vocab_size == 200
     assert trained._tokenizer.get_vocab_size(False) == trained.vocab_size
     assert len(trained) == trained.vocab_size + len(smirk.SPECIAL_TOKENS) - 1
@@ -52,8 +50,7 @@ def test_vocab_size():
 
 
 def test_multi_file():
-    tokenizer = smirk.SmirkTokenizerFast()
-    trained = tokenizer.train(
+    trained = smirk.train_gpe(
         [
             str(SMILE_TEST_FILE),
             str(Path(__file__).parent.joinpath("opensmiles.smi")),
@@ -73,7 +70,7 @@ def test_tokenize(trained):
 
 @pytest.mark.parametrize("merge_brackets", [True, False])
 def test_merge_brackets(merge_brackets):
-    tok = smirk.SmirkTokenizerFast().train(
+    tok = smirk.train_gpe(
         [str(SMILE_TEST_FILE)],
         merge_brackets=merge_brackets,
         vocab_size=16384,

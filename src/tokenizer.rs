@@ -53,7 +53,13 @@ impl SmirkTokenizer {
     #[new]
     fn __new__() -> Self {
         let tokenizer: Tokenizer = TokenizerBuilder::new()
-            .with_model(WordLevel::default().into())
+            .with_model(
+                WordLevel::builder()
+                    .unk_token("[UNK]".to_string())
+                    .build()
+                    .unwrap()
+                    .into(),
+            )
             .with_pre_tokenizer(Some(SmirkPreTokenizer::default().into()))
             .with_normalizer(Some(normalizer().into()))
             .with_decoder(Some(Fuse::default().into()))

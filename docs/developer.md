@@ -3,17 +3,16 @@
 ## Installing from Source
 
 1. Install [rust]
-2. Pip install `pip install --no-binary smirk smirk`
+1. Pip install `pip install --no-binary smirk smirk`
 
 ## Development Environment
 
 1. Install [uv]
-3. Build smirk: `uv run maturin develop`
-5. Use it: `uv run python -c 'import smirk'`
+2. Build smirk: `uv run maturin develop`
+3. Use it: `uv run python -c 'import smirk'`
 
 [rust]: https://www.rust-lang.org/tools/install
 [uv]: https://docs.astral.sh/uv/
-
 
 ## Running Tests
 
@@ -47,8 +46,8 @@ Please avoid committing notebook with saved cell outputs
 
 ## Linting
 
-:All in one: `uv run pre-commit run --all` 
-:Rust: 
+:All in one: `uv run pre-commit run --all`
+:Rust:
    Check syntax with `cargo check` and formatting with `cargo fmt`
-:Python: 
+:Python:
    Check syntax with `ruff --fix --select=I` and formatting with `ruff format`
