@@ -2,9 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased](https://github.com/BattModels/smirk)
 
 ### Added
 
@@ -23,24 +24,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Mark version as dynamic in pyproject ([#2](https://github.com/BattModels/smirk/pull/2))
 
-### Removed
-
-## [0.1.1] - 2024-12-09
+## [v0.1.1](https://github.com/BattModels/smirk/tree/v0.1.1) - 2024-12-09
 
 Preprint v2 posted: [arXiv:2409.15370v2](https://arxiv.org/abs/2409.15370v2)
 
-## Added
+### Added
 
 - Added support for post-processing templates to `SmirkTokenizerFast` ([#1](https://github.com/BattModels/smirk/pull/1))
 - Registered smirk with transformer's AutoTokenizer ([#1](https://github.com/BattModels/smirk/pull/1))
 - Added `vocab`, `convert_ids_to_tokens` and `convert_tokens_to_ids` methods ([#1](https://github.com/BattModels/smirk/pull/1))
 - Added support for truncating and padding during tokenization ([#1](https://github.com/BattModels/smirk/pull/1))
 
-## Fixed
+### Fixed
 
 - Fixed CI to install test dependencies ([#1](https://github.com/BattModels/smirk/pull/1))
 
-## [0.1.0] - 2024-09-11
+## [v0.1.0](https://github.com/BattModels/smirk/tree/v0.1.0) - 2024-09-11
 
 Preprint posted: [arXiv:2409.15370v1](https://arxiv.org/abs/2409.15370v1)
 
