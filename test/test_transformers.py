@@ -95,9 +95,9 @@ class TestTransformers:
         return tok2
 
     def test_rust_tokenizer_signature(self):
-        signiture = inspect.signature(self.tokenizer_class)
-        assert "tokenizer_file" in signiture.parameters
-        assert signiture.parameters["tokenizer_file"].default is None
+        signature = inspect.signature(self.tokenizer_class)
+        assert "tokenizer_file" in signature.parameters
+        assert signature.parameters["tokenizer_file"].default is None
 
     def test_tokenizer_fast_store_full_signature(self):
         signature = inspect.signature(self.tokenizer_class)

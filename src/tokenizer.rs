@@ -317,7 +317,7 @@ impl SmirkTokenizer {
                             "left" => Ok(TruncationDirection::Left),
                             "right" => Ok(TruncationDirection::Right),
                             other => Err(PyValueError::new_err(format!(
-                                "Unknown trunction direction {}",
+                                "Unknown truncation direction {}",
                                 other
                             ))),
                         }?

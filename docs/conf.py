@@ -54,17 +54,18 @@ autodoc_inherit_docstrings = False
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
-html_theme = "furo"
-html_logo = "_static/icon.svg"
+templates_path = ["_templates"]
 html_static_path = ["_static"]
-html_favicon = "_static/favicon.ico"
+html_theme = "furo"
+html_logo = "_static/logo.svg"
 html_copy_source = False
 html_show_sourcelink = True
 html_theme_options = {
+    "sidebar_hide_name": True,
     "source_repository": "https://github.com/BattModels/smirk",
     "source_branch": "main",
     "source_directory": "docs/",
+    "navigation_with_keys": True,
 }
 
 intersphinx_mapping = {

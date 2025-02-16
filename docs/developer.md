@@ -3,7 +3,7 @@
 ## Installing from Source
 
 1. Install [rust]
-1. Pip install `pip install --no-binary smirk smirk`
+2. Pip install `pip install --no-binary smirk`
 
 ## Development Environment
 
@@ -41,7 +41,7 @@ uv run --isolated --no-default-groups --with jupyter,pip jupyter notebook
 4. Commit your changes
 
 ```{important}
-Please avoid committing notebook with saved cell outputs
+Please avoid committing notebooks with saved cell outputs
 ```
 
 ## Linting
