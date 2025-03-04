@@ -1,22 +1,25 @@
 [project]
 name = "smirk"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 license = {file = "LICENSE"}
+dynamic = ["version"]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-    "transformers ~= 4.40",
+    "transformers >=4.40,<5",
 ]
 
-[project.optional-dependencies]
-test = [
+[dependency-groups]
+dev = [
     "pytest~=8.3",
     "parameterized==0.9.0",
-    "torch",
-    "numpy",
+    "ruff~=0.9.4",
+    "torch~=2.0",
+    "numpy~=2.0",
+    "pre-commit~=4.1.0",
 ]
 
 [build-system]

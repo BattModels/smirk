@@ -3,10 +3,9 @@ use std::collections::{HashMap, HashSet};
 use crate::gpe::{GpeTrainer, GPE};
 use crate::pre_tokenizers::{split_structure, SmirkPreTokenizer};
 use crate::wrapper::{ModelWrapper, PreTokenizerWrapper, TrainerWrapper};
-use dict_derive::{FromPyObject, IntoPyObject};
 use pyo3::exceptions::PyValueError;
-use pyo3::types::{PyDict, PyList, PyString};
-use pyo3::{pyclass, pymethods, PyResult, Python};
+use pyo3::prelude::*;
+use pyo3::types::{PyAnyMethods, PyDict, PyString};
 
 use regex::Regex;
 use tokenizers::decoders::fuse::Fuse;
@@ -84,8 +83,8 @@ impl SmirkTokenizer {
         SmirkTokenizer::new(tokenizer)
     }
 
-    fn pretokenize(&self, smile: &PyString) -> PyResult<Vec<String>> {
-        let mut pretokenized = PreTokenizedString::from(smile.to_str().unwrap());
+    fn pretokenize(&self, smile: String) -> PyResult<Vec<String>> {
+        let mut pretokenized = PreTokenizedString::from(smile);
         let _ = self
             .tokenizer
             .get_pre_tokenizer()
@@ -100,8 +99,8 @@ impl SmirkTokenizer {
     }
 
     #[pyo3(signature = (smile, add_special_tokens = true))]
-    fn encode(&self, smile: &PyString, add_special_tokens: bool) -> PyResult<Encoding> {
-        let input = EncodeInput::from(smile.to_str().unwrap());
+    fn encode(&self, smile: String, add_special_tokens: bool) -> PyResult<Encoding> {
+        let input = EncodeInput::from(smile);
         let encoding = self
             .tokenizer
             .encode_char_offsets(input, add_special_tokens)
@@ -118,12 +117,12 @@ impl SmirkTokenizer {
     fn encode_batch(
         &self,
         py: Python<'_>,
-        examples: Vec<&PyString>,
+        examples: Vec<Bound<'_, PyString>>,
         add_special_tokens: bool,
     ) -> PyResult<Vec<Encoding>> {
         let inputs: Vec<EncodeInput> = examples
             .into_iter()
-            .map(|x| EncodeInput::from(x.to_str().unwrap()))
+            .map(|x| EncodeInput::from(x.to_string()))
             .collect();
         // Release the GIL while tokenizing batch
         let out = py.allow_threads(|| {
@@ -179,7 +178,7 @@ impl SmirkTokenizer {
             .special_tokens(special_tokens)
             .build()
             .unwrap();
-        self.tokenizer.with_post_processor(tp);
+        self.tokenizer.with_post_processor(Some(tp));
         Ok(())
     }
 
@@ -250,11 +249,11 @@ impl SmirkTokenizer {
     }
 
     #[pyo3(signature = (**kwargs))]
-    fn with_padding(&mut self, kwargs: Option<&PyDict>) -> PyResult<()> {
+    fn with_padding(&mut self, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let mut params = PaddingParams::default();
         if let Some(kwargs) = kwargs {
-            for (key, value) in kwargs {
-                let key: &str = key.extract().unwrap();
+            for (key, value) in kwargs.iter() {
+                let key: &str = key.extract()?;
                 match key {
                     "direction" => {
                         let value: &str = value.extract().unwrap();
@@ -286,7 +285,7 @@ impl SmirkTokenizer {
     }
 
     #[pyo3(signature = (**kwargs))]
-    fn with_truncation(&mut self, kwargs: Option<&PyDict>) -> PyResult<()> {
+    fn with_truncation(&mut self, kwargs: Option<&Bound<'_, PyDict>>) -> PyResult<()> {
         let mut params = TruncationParams::default();
         if let Some(kwargs) = kwargs {
             for (key, value) in kwargs {
@@ -330,23 +329,30 @@ impl SmirkTokenizer {
         Ok(())
     }
 
-    fn add_tokens(&mut self, tokens: &PyList) -> PyResult<usize> {
-        let tokens = tokens
+    fn add_tokens(&mut self, tokens: Vec<Bound<'_, PyAny>>) -> PyResult<usize> {
+        let tokens: Vec<AddedToken> = tokens
             .into_iter()
-            .map(|token| AddedToken {
-                content: token.getattr("content").unwrap().to_string(),
-                lstrip: token.getattr("lstrip").unwrap().extract().unwrap(),
-                rstrip: token.getattr("rstrip").unwrap().extract().unwrap(),
-                normalized: token.getattr("normalized").unwrap().extract().unwrap(),
-                single_word: token.getattr("single_word").unwrap().extract().unwrap(),
-                special: token.getattr("special").unwrap().extract().unwrap(),
+            .map(|kwargs| {
+                Ok(AddedToken {
+                    content: kwargs.getattr("content")?.extract::<String>()?,
+                    single_word: kwargs.getattr("single_word")?.extract::<bool>()?,
+                    lstrip: kwargs.getattr("lstrip")?.extract::<bool>()?,
+                    rstrip: kwargs.getattr("rstrip")?.extract::<bool>()?,
+                    normalized: kwargs.getattr("normalized")?.extract::<bool>()?,
+                    special: kwargs.getattr("special")?.extract::<bool>()?,
+                })
             })
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<AddedToken>, PyErr>>()?;
         Ok(self.tokenizer.add_tokens(&tokens))
     }
 
     #[pyo3(signature = (files, **kwargs))]
-    fn train(&self, py: Python, files: Vec<String>, kwargs: Option<&PyDict>) -> PyResult<Self> {
+    fn train(
+        &self,
+        py: Python,
+        files: Vec<String>,
+        kwargs: Option<Bound<'_, PyDict>>,
+    ) -> PyResult<Self> {
         // Construct Trainable Tokenizer
         let model: ModelWrapper = match self.tokenizer.get_model() {
             ModelWrapper::ModelWrapper(mw) => match mw {
@@ -427,13 +433,13 @@ impl SmirkTokenizer {
     }
 }
 
-#[derive(FromPyObject, IntoPyObject, Debug)]
+#[derive(IntoPyObject, IntoPyObjectRef)]
 pub struct Encoding {
     pub input_ids: Vec<u32>,
     pub token_type_ids: Vec<u32>,
     pub attention_mask: Vec<u32>,
     pub special_tokens_mask: Vec<u32>,
-    pub offsets: Vec<(usize, usize)>,
+    pub offsets: Vec<(u64, u64)>,
 }
 
 impl From<tokenizers::Encoding> for Encoding {
@@ -443,7 +449,11 @@ impl From<tokenizers::Encoding> for Encoding {
             token_type_ids: encoding.get_type_ids().to_vec(),
             attention_mask: encoding.get_attention_mask().to_vec(),
             special_tokens_mask: encoding.get_special_tokens_mask().to_vec(),
-            offsets: encoding.get_offsets().to_vec(),
+            offsets: encoding
+                .get_offsets()
+                .into_iter()
+                .map(|&(start, end)| (start as u64, end as u64))
+                .collect(),
         }
     }
 }
