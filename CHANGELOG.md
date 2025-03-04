@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - Bumped PyO3, tokenizers and dict_derive dependencies ([#2](https://github.com/BattModels/smirk/pull/2))
+- Switched to uv for CI/pre-commit workflows ([#2](https://github.com/BattModels/smirk/pull/2))
 
 ### Breaking
 
