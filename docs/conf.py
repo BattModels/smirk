@@ -67,6 +67,9 @@ html_theme_options = {
     "source_directory": "docs/",
     "navigation_with_keys": True,
 }
+html_css_files = [
+    "custom.css",
+]
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
