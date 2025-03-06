@@ -27,7 +27,7 @@ uv run pytest              # Runs the testsuite
 
 To build the documentation:
 ```shell
-uv run --group docs sphinx-autobuild docs build/html
+uv run --group docs --with pip sphinx-autobuild docs build/html
 ```
 
 ### Editing Notebooks
