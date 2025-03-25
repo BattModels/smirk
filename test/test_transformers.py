@@ -1,10 +1,10 @@
-import pytest
 import inspect
 import pickle
 from collections.abc import Mapping
-from tempfile import TemporaryDirectory
 from random import shuffle
+from tempfile import TemporaryDirectory
 
+import pytest
 import smirk
 from parameterized import parameterized_class
 from transformers import (
@@ -18,7 +18,7 @@ from .test_smirk_gpe import SMILE_TEST_FILE
 
 
 def get_smirk_gpe():
-    return smirk.SmirkTokenizerFast().train([str(SMILE_TEST_FILE)])
+    return smirk.train_gpe([str(SMILE_TEST_FILE)])
 
 
 def transformers_testname(cls, idx, input_dict):
@@ -95,9 +95,9 @@ class TestTransformers:
         return tok2
 
     def test_rust_tokenizer_signature(self):
-        signiture = inspect.signature(self.tokenizer_class)
-        assert "tokenizer_file" in signiture.parameters
-        assert signiture.parameters["tokenizer_file"].default is None
+        signature = inspect.signature(self.tokenizer_class)
+        assert "tokenizer_file" in signature.parameters
+        assert signature.parameters["tokenizer_file"].default is None
 
     def test_tokenizer_fast_store_full_signature(self):
         signature = inspect.signature(self.tokenizer_class)

@@ -3,7 +3,8 @@ repos:
     rev: v4.6.0
     hooks:
       - id: trailing-whitespace
-        args: [--markdown-linebreak-ext=md]
+        args:
+          - --markdown-linebreak-ext=md
       - id: check-yaml
       - id: end-of-file-fixer
       - id: check-merge-conflict
@@ -16,11 +17,17 @@ repos:
     hooks:
       - id: remove-crlf
       - id: remove-tabs
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.5.4
     hooks:
       - id: ruff
-        args: [ --fix ]
+        args:
+          - --fix
+          - --select=I
       - id: ruff-format
   - repo: https://github.com/FeryET/pre-commit-rust
     rev: v1.1.0
