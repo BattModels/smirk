@@ -1,6 +1,9 @@
 name: docs
 on:
   pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 jobs:
   build:
@@ -16,7 +19,6 @@ jobs:
       - run: uv run --group docs --with pip sphinx-build docs build/html
       - uses: actions/upload-pages-artifact@v4
         with:
-          name: smirk-docs
           path: build/html/
   deploy:
     if: ${{ github.ref == 'refs/heads/main' }}
