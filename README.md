@@ -17,5 +17,5 @@ about tokenization for molecular foundation models.
 ## Installation
 
 ```
-pip install https://github.com/BattModels/smirk@main
+pip install pip@git+https://github.com/BattModels/smirk@main
 ```
