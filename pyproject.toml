@@ -1,6 +1,7 @@
 [project]
 name = "smirk"
-requires-python = ">=3.7"
+requires-python = ">=3.9"
+version = "0.1.0"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -10,6 +11,10 @@ dependencies = [
     "transformers ~= 4.40",
     "tokenizers >=0.19, <0.20",
 ]
+
+[project.urls]
+github = "https://github.com/BattModels/smirk"
+homepage = "https://eeg.engin.umich.edu/smirk"
 
 [project.optional-dependencies]
 test = [ "pytest" ]
