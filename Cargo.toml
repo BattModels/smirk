@@ -1,6 +1,6 @@
 [package]
 name = "smirk"
-version = "0.2.0"
+version = "0.2.0-dev"
 edition = "2021"
 license = "Apache-2.0"
 description = "A chemically complete tokenizer for OpenSMILES"
@@ -10,6 +10,7 @@ authors = [
 ]
 readme = "README.md"
 repository = "https://github.com/BattModels/smirk"
+homepage = "https://eeg.engin.umich.edu/smirk"
 
 [lib]
 name = "smirk"
