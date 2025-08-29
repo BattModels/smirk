@@ -1,17 +1,26 @@
 import argparse
 
-from . import SmirkTokenizerFast
+from . import train_gpe
 
 
-def cli(argv=None):
-    p = argparse.ArgumentParser("python -m smirk.cli")
+def __cli_parser():
+    p = argparse.ArgumentParser(
+        "python -m smirk.cli",
+        description="Train a smirk-gpe tokenizer from a corpus of SMILES encodings",
+    )
     p.add_argument("files", nargs="+")
     p.add_argument("--vocab-size", type=int, default=1024)
     p.add_argument(
-        "--merge-brackets", default=False, action=argparse.BooleanOptionalAction
+        "--merge-brackets",
+        default=False,
+        action=argparse.BooleanOptionalAction,
+        help="Allow merges with bracket (`[` or `]`) tokens",
     )
     p.add_argument(
-        "--split-structure", default=False, action=argparse.BooleanOptionalAction
+        "--split-structure",
+        default=True,
+        action=argparse.BooleanOptionalAction,
+        help="Split SMILES on structure before training",
     )
     p.add_argument(
         "-o",
@@ -20,9 +29,13 @@ def cli(argv=None):
         type=str,
         help="directory where trained smirk-gpe model is saved",
     )
-    args = p.parse_args(argv)
-    tok = SmirkTokenizerFast()
-    tok_gpe = tok.train(
+    return p
+
+
+def cli(argv=None):
+    parser = __cli_parser()
+    args = parser.parse_args(argv)
+    tok_gpe = train_gpe(
         args.files,
         vocab_size=args.vocab_size,
         merge_brackets=args.merge_brackets,

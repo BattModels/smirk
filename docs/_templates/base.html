@@ -1,0 +1,10 @@
+{% extends '!base.html' %}
+{%- block site_meta -%}
+    {{ super() }}
+
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" href="/_static/favicon-96x96.png" sizes="96x96" />
+    <link rel="shortcut icon" href="/_static/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/_static/apple-touch-icon.png" />
+    <link rel="manifest" href="/_static/site.webmanifest" />
+{%- endblock -%}
