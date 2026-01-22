@@ -1,7 +1,11 @@
 [project]
 name = "smirk"
 requires-python = ">=3.9"
-dynamic = ["version"]
+dynamic = ["version", "readme", "license"]
+authors = [
+    { name="Alexius Wadell", email="awadell@umich.edu" },
+    { name="Anoushka Bhutani" },
+]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
@@ -12,8 +16,11 @@ dependencies = [
 ]
 
 [project.urls]
-github = "https://github.com/BattModels/smirk"
+source = "https://github.com/BattModels/smirk"
 homepage = "https://eeg.engin.umich.edu/smirk"
+documentation = "https://eeg.engin.umich.edu/smirk"
+issues = "https://github.com/BattModels/smirk/issues"
+changelog = "https://github.com/BattModels/smirk/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
