@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Started a changelog ([#2](https://github.com/BattModels/smirk/pull/2))
+- Added a release pipeline ([#6](https://github.com/BattModels/smirk/pull/6))
 
 ### Changed
 
