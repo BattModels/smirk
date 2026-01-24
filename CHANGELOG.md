@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.2.0](https://github.com/BattModels/smirk)
 
+Paper published in ACS JCIM: [*Tokenization for Molecular Foundation Models*](https://doi.org/10.1021/acs.jcim.5c01856)
+
 ### Added
 
 - Started a changelog ([#2](https://github.com/BattModels/smirk/pull/2))

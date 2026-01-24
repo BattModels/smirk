@@ -3,6 +3,8 @@
 <div align="center" display="flex" >
 
 ![GitHub License](https://img.shields.io/github/license/BattModels/smirk)
+<a href="https://doi.org/10.1021/acs.jcim.5c01856">![paper](https://img.shields.io/badge/paper-10.1021%2Facs.jcim.5c01856-blue)</a>
+<a href="https://doi.org/10.5281/zenodo.13761262">![data](https://img.shields.io/badge/data-10.5281%2Fzenodo.13761262-blue)</a>
 <a href="https://arxiv.org/abs/2409.15370">![arXiv:2409.15370](https://img.shields.io/badge/cs.LG-2409.15370-b31b1b?style=flat&amp;logo=arxiv&amp;logoColor=red)</a>
 
 </div>
@@ -22,7 +24,7 @@ that fail to represent *all* of chemistry, inherently limiting their performance
 Enabling complete coverage of [OpenSMILES] with a vocabulary of 167 tokens.
 
 [OpenSMILES]: http://opensmiles.org/
-[paper]: https://arxiv.org/abs/2409.15370
+[paper]: https://doi.org/10.1021/acs.jcim.5c01856
 [HuggingFace]: https://huggingface.co/docs
 [Tokenizers]: https://huggingface.co/docs/tokenizers
 
