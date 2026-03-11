@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.2.0](https://github.com/BattModels/smirk)
+## Unreleased
+
+### Fixed
+
+- Build issue due to leading `./` in included file paths  ([#7](https://github.com/BattModels/smirk/pull/7))
+
+## [v0.2.0](https://github.com/BattModels/smirk/tree/v0.2.0)
 
 Paper published in ACS JCIM: [*Tokenization for Molecular Foundation Models*](https://doi.org/10.1021/acs.jcim.5c01856)
 
