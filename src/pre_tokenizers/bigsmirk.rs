@@ -10,7 +10,6 @@ use tokenizers::tokenizer::{
     Offsets, PreTokenizedString, PreTokenizer, Result, SplitDelimiterBehavior,
 };
 
-
 #[derive(Clone)]
 pub struct BigSmirkPreTokenizer {
     outer: Regex,
@@ -328,7 +327,10 @@ pub mod tests {
             ["[", "Na", "+", "]", ".", "[", "Cl", "-", "]"]
         );
         assert_eq!(get_split_tokens(&pretok, "CC-O"), ["C", "C", "-", "O"]);
-        assert_eq!(get_split_tokens(&pretok, "O=C=O"), ["O", "=", "C", "=", "O"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "O=C=O"),
+            ["O", "=", "C", "=", "O"]
+        );
         assert_eq!(get_split_tokens(&pretok, "C#N"), ["C", "#", "N"]);
         assert_eq!(
             get_split_tokens(&pretok, "c1ccccc1"),
@@ -376,9 +378,9 @@ pub mod tests {
         assert_eq!(
             get_split_tokens(&pretok, "{[>]CCCCCC(=O)[<],[>]NCCCCCCN[<]}"),
             [
-                "{", "[", ">", "]", "C", "C", "C", "C", "C", "C", "(", "=", "O", ")", "[",
-                "<", "]", ",", "[", ">", "]", "N", "C", "C", "C", "C", "C", "C", "N", "[",
-                "<", "]", "}"
+                "{", "[", ">", "]", "C", "C", "C", "C", "C", "C", "(", "=", "O", ")", "[", "<",
+                "]", ",", "[", ">", "]", "N", "C", "C", "C", "C", "C", "C", "N", "[", "<", "]",
+                "}"
             ]
         );
     }
@@ -386,14 +388,8 @@ pub mod tests {
     #[test]
     fn test_indexed_bonding_descriptors() {
         let pretok = BigSmirkPreTokenizer::default();
-        assert_eq!(
-            get_split_tokens(&pretok, "[$1]"),
-            ["[", "$", "1", "]"]
-        );
-        assert_eq!(
-            get_split_tokens(&pretok, "[$2]"),
-            ["[", "$", "2", "]"]
-        );
+        assert_eq!(get_split_tokens(&pretok, "[$1]"), ["[", "$", "1", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[$2]"), ["[", "$", "2", "]"]);
 
         assert_eq!(get_split_tokens(&pretok, "[<1]"), ["[", "<", "1", "]"]);
         assert_eq!(get_split_tokens(&pretok, "[>1]"), ["[", ">", "1", "]"]);
@@ -401,8 +397,8 @@ pub mod tests {
         assert_eq!(
             get_split_tokens(&pretok, "{[$1]CC[$1],[$2]C(C)C[$2]}"),
             [
-                "{", "[", "$", "1", "]", "C", "C", "[", "$", "1", "]", ",", "[", "$", "2",
-                "]", "C", "(", "C", ")", "C", "[", "$", "2", "]", "}"
+                "{", "[", "$", "1", "]", "C", "C", "[", "$", "1", "]", ",", "[", "$", "2", "]",
+                "C", "(", "C", ")", "C", "[", "$", "2", "]", "}"
             ]
         );
     }
@@ -423,8 +419,8 @@ pub mod tests {
         assert_eq!(
             get_split_tokens(&pretok, "{[<1[<1]1]CC[>1[>1]1]}"),
             [
-                "{", "[", "<", "1", "[", "<", "1", "]", "1", "]", "C", "C", "[", ">", "1",
-                "[", ">", "1", "]", "1", "]", "}"
+                "{", "[", "<", "1", "[", "<", "1", "]", "1", "]", "C", "C", "[", ">", "1", "[",
+                ">", "1", "]", "1", "]", "}"
             ]
         );
     }
@@ -519,10 +515,7 @@ pub mod tests {
     #[test]
     fn test_fragment_reference() {
         let pretok = BigSmirkPreTokenizer::default();
-        assert_eq!(
-            get_split_tokens(&pretok, "[#PEG]"),
-            ["[", "#", "PEG", "]"]
-        );
+        assert_eq!(get_split_tokens(&pretok, "[#PEG]"), ["[", "#", "PEG", "]"]);
         assert_eq!(
             get_split_tokens(&pretok, "[#Styrene]"),
             ["[", "#", "Styrene", "]"]

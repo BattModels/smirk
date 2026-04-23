@@ -2,7 +2,6 @@ import json
 from tempfile import NamedTemporaryFile
 
 import pytest
-
 import smirk
 from smirk.smirk import SmirkTokenizer
 

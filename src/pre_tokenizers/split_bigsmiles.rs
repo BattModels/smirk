@@ -39,13 +39,13 @@ const CHIRAL: &'static str = r"@(?:@|AL|OH|SP|T(?:B|H))?";
 
 pub const MATCH_OUTER_BIGSMILES: &'static str = concat!(
     r"Br?|Cl?|F|I|N|O|P|S|", // organic subset elements
-    r"b|c|n|o|p|s|", // Aromatic organic subset
-    r"\*|", // Wildcard
-    r"[\.\-=\#\$:/\\]|", // Bonds
-    r"\d|%|", // Ring closures
+    r"b|c|n|o|p|s|",         // Aromatic organic subset
+    r"\*|",                  // Wildcard
+    r"[\.\-=\#\$:/\\]|",     // Bonds
+    r"\d|%|",                // Ring closures
     r"\(|\)|",
-    r"\{|\}|", // Stochastic object delimiters
-    r",|;|", // Repeat unit separator and end group separator
+    r"\{|\}|",                         // Stochastic object delimiters
+    r",|;|",                           // Repeat unit separator and end group separator
     r"\[(?:[^\[\]]+|\[[^\[\]]*\])*\]", // Bracketed atoms/descriptors
 );
 
@@ -59,25 +59,25 @@ pub const MATCH_INNER_BIGSMILES: &'static str = formatcp!(concat!(
     r"|",
     r"(#)([!-~]+)",
     r"|",
-    r"(\d+)?",                        
-    r"({BRACKETED_SYMBOL})",         
-    r"(?:({CHIRAL})(\d{{1,2}})?)?",  
-    r"(?:(H)(\d)?)?",                 
-    r"(?:([+-]{{1,2}})(\d{{1,2}})?)?", 
-    r"(?:(:)(\d+))?",                 
+    r"(\d+)?",
+    r"({BRACKETED_SYMBOL})",
+    r"(?:({CHIRAL})(\d{{1,2}})?)?",
+    r"(?:(H)(\d)?)?",
+    r"(?:([+-]{{1,2}})(\d{{1,2}})?)?",
+    r"(?:(:)(\d+))?",
     r")$",
 ));
 
 pub const BONDING_DESCRIPTOR: &'static str = concat!(
-    r"(\$|<|>)",     // Descriptor type
-    r"(\d+)?",       // Optional index
+    r"(\$|<|>)", // Descriptor type
+    r"(\d+)?",   // Optional index
 );
 
 pub const LADDER_BONDING_DESCRIPTOR: &'static str = concat!(
-    r"(\$|<|>)",              // Outer descriptor type
-    r"(\d+)?",                // Outer descriptor id
+    r"(\$|<|>)",               // Outer descriptor type
+    r"(\d+)?",                 // Outer descriptor id
     r"(\[)(\$|<|>)(\d+)?(\])", // Inner descriptor
-    r"(\d+)",                 // Group id
+    r"(\d+)",                  // Group id
 );
 
 pub const FRAGMENT_REFERENCE: &'static str = r"(#)([!-~]+)";
