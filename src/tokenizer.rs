@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::gpe::{GpeTrainer, GPE};
-use crate::pre_tokenizers::{split_structure, SmirkPreTokenizer};
+use crate::pre_tokenizers::{split_structure, BigSmirkPreTokenizer, SmirkPreTokenizer};
 use crate::wrapper::{ModelWrapper, PreTokenizerWrapper, TrainerWrapper};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -51,7 +51,13 @@ fn normalizer() -> normalizers::Sequence {
 #[pymethods]
 impl SmirkTokenizer {
     #[new]
-    fn __new__() -> Self {
+    #[pyo3(signature = (bigsmiles = false))]
+    fn __new__(bigsmiles: bool) -> Self {
+        let pre_tokenizer: PreTokenizerWrapper = if bigsmiles {
+            BigSmirkPreTokenizer::default().into()
+        } else {
+            SmirkPreTokenizer::default().into()
+        };
         let tokenizer: Tokenizer = TokenizerBuilder::new()
             .with_model(
                 WordLevel::builder()
@@ -60,7 +66,7 @@ impl SmirkTokenizer {
                     .unwrap()
                     .into(),
             )
-            .with_pre_tokenizer(Some(SmirkPreTokenizer::default().into()))
+            .with_pre_tokenizer(Some(pre_tokenizer))
             .with_normalizer(Some(normalizer().into()))
             .with_decoder(Some(Fuse::default().into()))
             .build()
@@ -77,11 +83,17 @@ impl SmirkTokenizer {
     }
 
     #[staticmethod]
-    fn from_vocab(file: &str) -> Self {
+    #[pyo3(signature = (file, bigsmiles = false))]
+    fn from_vocab(file: &str, bigsmiles: bool) -> Self {
+        let pre_tokenizer: PreTokenizerWrapper = if bigsmiles {
+            BigSmirkPreTokenizer::default().into()
+        } else {
+            SmirkPreTokenizer::default().into()
+        };
         let model = WordLevel::from_file(file, "[UNK]".to_string()).unwrap();
         let tokenizer = TokenizerBuilder::new()
             .with_model(model.into())
-            .with_pre_tokenizer(Some(SmirkPreTokenizer::default().into()))
+            .with_pre_tokenizer(Some(pre_tokenizer))
             .with_normalizer(Some(normalizer().into()))
             .with_decoder(Some(Fuse::new().into()))
             .build()

@@ -1,9 +1,12 @@
+mod bigsmirk;
 mod smirk;
+mod split_bigsmiles;
 mod split_smiles;
 
 use tokenizers::pre_tokenizers::split::{Split, SplitPattern};
 use tokenizers::SplitDelimiterBehavior;
 
+pub use bigsmirk::BigSmirkPreTokenizer;
 pub use smirk::SmirkPreTokenizer;
 
 pub fn split_structure() -> Split {

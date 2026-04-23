@@ -15,7 +15,6 @@ from transformers.tokenization_utils_base import (
     TruncationStrategy,
 )
 from transformers.tokenization_utils_fast import TOKENIZER_FILE
-from transformers.utils import add_code_sample_docstrings
 
 from . import smirk as rs_smirk
 
@@ -28,8 +27,8 @@ SPECIAL_TOKENS = {
     "cls_token": "[CLS]",
     "mask_token": "[MASK]",
 }
-""" Default Special tokens used by the :py:class:`SmirkTokenizerFast`
-and :py:func:`SmirkSelfiesFast` tokenizers.
+""" Default special tokens used by :py:class:`SmirkTokenizerFast`,
+:py:class:`SmirkBigSmilesFast`, and :py:func:`SmirkSelfiesFast`.
 """
 
 
@@ -162,9 +161,9 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         return len(self.build_inputs_with_special_tokens([], [] if pair else None))
 
     def __check_encode_kwargs(self, kwargs):
-        assert (
-            kwargs.pop("return_overflowing_tokens", False) is False
-        ), "Not implemented"
+        assert kwargs.pop("return_overflowing_tokens", False) is False, (
+            "Not implemented"
+        )
         assert kwargs.pop("split_special_tokens", False) is False, "Not implemented"
         assert kwargs.pop("is_split_into_words", False) is False, "Not implemented"
 
@@ -340,6 +339,31 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
 
 # Register with AutoTokenizer
 AutoTokenizer.register("SmirkTokenizer", fast_tokenizer_class=SmirkTokenizerFast)
+
+
+class SmirkBigSmilesFast(SmirkTokenizerFast):
+    def __init__(self, tokenizer_file: Optional[os.PathLike] = None, **kwargs):
+        """
+        A Chemically-Complete Tokenizer for core BigSMILES line notation.
+
+        :param tokenizer_file: Path to a JSON serialize SmirkTokenizerFast tokenizers
+        :param kwargs: Additional kwargs are passed to :py:class:`SmirkTokenizerFast`
+        """
+        default_vocab_file = files("smirk").joinpath("vocab_bigsmiles.json")
+        if tokenizer := kwargs.pop("tokenizer", None):
+            tokenizer = tokenizer
+        elif tokenizer_file:
+            tokenizer = rs_smirk.SmirkTokenizer.from_file(str(tokenizer_file))
+            kwargs["tokenizer_file"] = str(tokenizer_file)
+        elif vocab_file := kwargs.pop("vocab_file", default_vocab_file):
+            tokenizer = rs_smirk.SmirkTokenizer.from_vocab(
+                str(vocab_file), bigsmiles=True
+            )
+            kwargs["vocab_file"] = str(vocab_file)
+        else:
+            tokenizer = rs_smirk.SmirkTokenizer(bigsmiles=True)
+
+        super().__init__(tokenizer=tokenizer, **kwargs)
 
 
 def SmirkSelfiesFast(

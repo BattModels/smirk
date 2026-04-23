@@ -2,12 +2,13 @@ use serde::{Deserialize, Serialize};
 use tokenizers::tokenizer::{Model, PreTokenizedString, PreTokenizer, Result, Trainer};
 
 use crate::gpe::{GpeTrainer, GPE};
-use crate::pre_tokenizers::SmirkPreTokenizer;
+use crate::pre_tokenizers::{BigSmirkPreTokenizer, SmirkPreTokenizer};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum PreTokenizerWrapper {
     PreTokenizer(tokenizers::PreTokenizerWrapper),
+    BigSmirkPreTokenizer(BigSmirkPreTokenizer),
     SmirkPreTokenizer(SmirkPreTokenizer),
 }
 
@@ -15,6 +16,7 @@ impl PreTokenizer for PreTokenizerWrapper {
     fn pre_tokenize(&self, pretokenized: &mut PreTokenizedString) -> Result<()> {
         match self {
             Self::PreTokenizer(t) => t.pre_tokenize(pretokenized),
+            Self::BigSmirkPreTokenizer(t) => t.pre_tokenize(pretokenized),
             Self::SmirkPreTokenizer(t) => t.pre_tokenize(pretokenized),
         }
     }
@@ -23,6 +25,12 @@ impl PreTokenizer for PreTokenizerWrapper {
 impl From<SmirkPreTokenizer> for PreTokenizerWrapper {
     fn from(value: SmirkPreTokenizer) -> Self {
         Self::SmirkPreTokenizer(value)
+    }
+}
+
+impl From<BigSmirkPreTokenizer> for PreTokenizerWrapper {
+    fn from(value: BigSmirkPreTokenizer) -> Self {
+        Self::BigSmirkPreTokenizer(value)
     }
 }
 
@@ -199,6 +207,12 @@ mod test {
             PreTokenizerWrapper::PreTokenizer(split_structure().into()),
         );
         check_serde(&pretok.0.clone());
+        check_serde(&pretok);
+    }
+
+    #[test]
+    fn serialize_bigsmirk_pretok() {
+        let pretok = PreTokenizerWrapper::BigSmirkPreTokenizer(BigSmirkPreTokenizer::default());
         check_serde(&pretok);
     }
 }
