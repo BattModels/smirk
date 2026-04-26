@@ -576,4 +576,29 @@ pub mod tests {
             assert!(all_matches(&pretok, line));
         }
     }
+
+    #[test]
+    fn test_bigsmiles_spec() {
+        let pretok = BigSmirkPreTokenizer::default();
+        let mut bigsmiles_examples = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        bigsmiles_examples.push("test");
+        bigsmiles_examples.push("bigsmiles.smi");
+        let examples =
+            fs::read_to_string(bigsmiles_examples.as_path()).expect("failed to open bigsmiles.smi");
+        let mut failures = Vec::new();
+        for (idx, line) in examples
+            .lines()
+            .enumerate()
+            .filter(|(_, x)| !x.starts_with("#") && !x.is_empty())
+        {
+            if !all_matches(&pretok, line) {
+                failures.push(format!("line {}: {}", idx + 1, line));
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "failed to tokenize BigSMILES fixtures:\n{}",
+            failures.join("\n")
+        );
+    }
 }

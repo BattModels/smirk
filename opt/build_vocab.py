@@ -30,6 +30,7 @@ CHIRAL_CONFIG = ["TH", "AL", "SP", "TB", "OH"]
 BONDS = [".", "-", "=", "#", "$", ":", "/", "\\"]
 DIGITS = [str(x) for x in range(10)]
 BIGSMILES_EXTRA_TOKENS = ["{", "}", ",", ";", "<", ">"]
+BIGSMILES_LABEL = r"[A-Z][A-Za-z0-9']*"
 
 
 def build_smiles_alphabet():
@@ -206,6 +207,7 @@ def build_bigsmiles_pretokenizer():
                 r"\(|\)",  # branches
                 r"\{|\}",  # stochastic object delimiters
                 r",|;",  # repeat unit separator and end group separator
+                BIGSMILES_LABEL,  # fragment and abstract spec labels
                 r"\[(?:[^\[\]]+|\[[^\[\]]*\])*\]",  # bracketed atoms/descriptors
             ],
             public=True,
@@ -220,7 +222,7 @@ def build_bigsmiles_pretokenizer():
                 r"|",
                 r"(\$|<|>)(\d+)?",
                 r"|",
-                r"(\$|<|>)(\d+)?(\[)(\$|<|>)(\d+)?(\])(\d+)",
+                rf"(\$|<|>)(\d+)?(\[)(\$|<|>|{BIGSMILES_LABEL})(\d+)?(\])(\d+)",
                 r"|",
                 r"(#)([!-~]+)",
                 r"|",
@@ -254,7 +256,7 @@ def build_bigsmiles_pretokenizer():
             [
                 r"(\$|<|>)",  # outer descriptor type
                 r"(\d+)?",  # outer descriptor id
-                r"(\[)(\$|<|>)(\d+)?(\])",  # inner descriptor
+                rf"(\[)(\$|<|>|{BIGSMILES_LABEL})(\d+)?(\])",  # inner descriptor
                 r"(\d+)",  # group id
             ],
             public=True,

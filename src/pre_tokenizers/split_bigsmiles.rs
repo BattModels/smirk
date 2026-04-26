@@ -46,6 +46,7 @@ pub const MATCH_OUTER_BIGSMILES: &'static str = concat!(
     r"\(|\)|",
     r"\{|\}|",                         // Stochastic object delimiters
     r",|;|",                           // Repeat unit separator and end group separator
+    r"[A-Z][A-Za-z0-9']*|",            // Fragment and abstract spec labels
     r"\[(?:[^\[\]]+|\[[^\[\]]*\])*\]", // Bracketed atoms/descriptors
 );
 
@@ -55,7 +56,7 @@ pub const MATCH_INNER_BIGSMILES: &'static str = formatcp!(concat!(
     r"|",
     r"(\$|<|>)(\d+)?",
     r"|",
-    r"(\$|<|>)(\d+)?(\[)(\$|<|>)(\d+)?(\])(\d+)",
+    r"(\$|<|>)(\d+)?(\[)(\$|<|>|[A-Z][A-Za-z0-9']*)(\d+)?(\])(\d+)",
     r"|",
     r"(#)([!-~]+)",
     r"|",
@@ -74,10 +75,10 @@ pub const BONDING_DESCRIPTOR: &'static str = concat!(
 );
 
 pub const LADDER_BONDING_DESCRIPTOR: &'static str = concat!(
-    r"(\$|<|>)",               // Outer descriptor type
-    r"(\d+)?",                 // Outer descriptor id
-    r"(\[)(\$|<|>)(\d+)?(\])", // Inner descriptor
-    r"(\d+)",                  // Group id
+    r"(\$|<|>)",                                  // Outer descriptor type
+    r"(\d+)?",                                    // Outer descriptor id
+    r"(\[)(\$|<|>|[A-Z][A-Za-z0-9']*)(\d+)?(\])", // Inner descriptor
+    r"(\d+)",                                     // Group id
 );
 
 pub const FRAGMENT_REFERENCE: &'static str = r"(#)([!-~]+)";
