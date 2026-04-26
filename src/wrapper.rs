@@ -213,6 +213,7 @@ mod test {
     #[test]
     fn serialize_bigsmirk_pretok() {
         let pretok = PreTokenizerWrapper::BigSmirkPreTokenizer(BigSmirkPreTokenizer::default());
+        check_serde(&pretok.clone());
         check_serde(&pretok);
     }
 }
