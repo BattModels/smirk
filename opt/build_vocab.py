@@ -29,6 +29,7 @@ CHIRAL = ["@", "@@"]
 CHIRAL_CONFIG = ["TH", "AL", "SP", "TB", "OH"]
 BONDS = [".", "-", "=", "#", "$", ":", "/", "\\"]
 DIGITS = [str(x) for x in range(10)]
+BIGSMILES_EXTRA_TOKENS = ["{", "}", ",", ";", "<", ">"]
 
 
 def build_smiles_alphabet():
@@ -59,17 +60,23 @@ def build_smiles_alphabet():
     return vocab
 
 
-def const_str(name, regex, comment=None, public=False):
+def const_str(name, regex, comment=None, public=False, separator="|", wrapper=None):
     out = f"const {name}: &'static str ="
     if isinstance(regex, list):
-        out += " concat!(\n"
+        if wrapper:
+            out += f" {wrapper}!(concat!(\n"
+        else:
+            out += " concat!(\n"
         for idx, r in enumerate(regex):
             out += f'    r"{r}'
             if idx < len(regex) - 1:
-                out += "|"
+                out += separator
             out += '",\n'
 
-        out += ");"
+        if wrapper:
+            out += "));"
+        else:
+            out += ");"
     else:
         out += f' r"{regex}";'
 
@@ -110,6 +117,35 @@ def merge_tokens(tokens):
     return sorted(out)
 
 
+def merge_tokens_grouped(tokens):
+    branches = defaultdict(set)
+    for token in tokens:
+        assert len(token) in [1, 2]
+        if len(token) == 1:
+            branches[token[0]] |= {None}
+        else:
+            branches[token[0]].add(token[1])
+
+    out = []
+    for leader, tail in branches.items():
+        if None in tail:
+            tail -= {None}
+            if len(tail) == 0:
+                cr = leader
+            elif len(tail) == 1:
+                cr = f"{leader}{tail.pop()}?"
+            else:
+                cr = f"{leader}(?:{'|'.join(sorted(tail))})?"
+        else:
+            if len(tail) == 1:
+                cr = f"{leader}{tail.pop()}"
+            else:
+                cr = f"{leader}(?:{'|'.join(sorted(tail))})"
+
+        out.append(cr)
+    return sorted(out)
+
+
 def match_chars(chars: list[str]):
     """Combine chars into a regex: `[chars]`, adding escapes as needed"""
     return "[" + re.escape("".join(chars)) + "]"
@@ -145,6 +181,89 @@ def build_smiles_pretokenizer():
     print(const_str("CHIRAL", f"@(?:@|{chiral})?"))
 
 
+def build_bigsmiles_pretokenizer():
+    print(
+        const_str(
+            "BRACKETED_SYMBOL",
+            [
+                *merge_tokens_grouped(ELEMENT_SYMBOLS),
+                *merge_tokens_grouped(AROMATIC_SYMBOLS),
+                r"\*",
+            ],
+        )
+    )
+    chiral = "|".join(merge_tokens_grouped(CHIRAL_CONFIG))
+    print(const_str("CHIRAL", f"@(?:@|{chiral})?"))
+    print(
+        const_str(
+            "MATCH_OUTER_BIGSMILES",
+            [
+                "|".join(merge_tokens(ALIPHATIC_ORGANIC)),  # organic subset elements
+                "|".join(merge_tokens(AROMATIC_ORGANIC)),  # aromatic organic subset
+                r"\*",  # wildcard
+                match_chars(BONDS),  # bonds
+                r"\d|%",  # ring closures
+                r"\(|\)",  # branches
+                r"\{|\}",  # stochastic object delimiters
+                r",|;",  # repeat unit separator and end group separator
+                r"\[(?:[^\[\]]+|\[[^\[\]]*\])*\]",  # bracketed atoms/descriptors
+            ],
+            public=True,
+        )
+    )
+    print(
+        const_str(
+            "MATCH_INNER_BIGSMILES",
+            [
+                r"^(?:",
+                r"",
+                r"|",
+                r"(\$|<|>)(\d+)?",
+                r"|",
+                r"(\$|<|>)(\d+)?(\[)(\$|<|>)(\d+)?(\])(\d+)",
+                r"|",
+                r"(#)([!-~]+)",
+                r"|",
+                r"(\d+)?",
+                r"({BRACKETED_SYMBOL})",
+                r"(?:({CHIRAL})(\d{{1,2}})?)?",
+                r"(?:(H)(\d)?)?",
+                r"(?:([+-]{{1,2}})(\d{{1,2}})?)?",
+                r"(?:(:)(\d+))?",
+                r")$",
+            ],
+            public=True,
+            separator="",
+            wrapper="formatcp",
+        )
+    )
+    print(
+        const_str(
+            "BONDING_DESCRIPTOR",
+            [
+                r"(\$|<|>)",  # descriptor type
+                r"(\d+)?",  # optional index
+            ],
+            public=True,
+            separator="",
+        )
+    )
+    print(
+        const_str(
+            "LADDER_BONDING_DESCRIPTOR",
+            [
+                r"(\$|<|>)",  # outer descriptor type
+                r"(\d+)?",  # outer descriptor id
+                r"(\[)(\$|<|>)(\d+)?(\])",  # inner descriptor
+                r"(\d+)",  # group id
+            ],
+            public=True,
+            separator="",
+        )
+    )
+    print(const_str("FRAGMENT_REFERENCE", r"(#)([!-~]+)", public=True))
+
+
 def build_selfies_pretokenizer():
     print(
         "|".join(
@@ -171,35 +290,57 @@ def build_selfies_alphabet():
     return vocab
 
 
+def build_bigsmiles_alphabet():
+    vocab = build_smiles_alphabet()
+    vocab.update(BIGSMILES_EXTRA_TOKENS)
+
+    return vocab
+
+
 def build_vocab(tokens: set):
     tokens = ["[UNK]", *sorted(tokens)]
     return {token: id for id, token in enumerate(tokens)}
 
 
+def build_bigsmiles_vocab():
+    vocab = build_vocab(build_smiles_alphabet())
+    for token in BIGSMILES_EXTRA_TOKENS:
+        vocab[token] = len(vocab)
+    return vocab
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("-t", "--type", choices=["vocab", "regex"], default="vocab")
-    p.add_argument("-f", "--format", choices=["smiles", "selfies"], default="smiles")
+    p.add_argument(
+        "-f", "--format", choices=["smiles", "bigsmiles", "selfies"], default="smiles"
+    )
     p.add_argument("output", type=argparse.FileType("w"), default=sys.stdout, nargs="?")
     args = p.parse_args()
 
     if args.type == "vocab":
-        if args.format == "smiles":
-            alphabet = build_smiles_alphabet()
-        elif args.format == "selfies":
-            alphabet = build_selfies_alphabet()
+        if args.format == "bigsmiles":
+            vocab = build_bigsmiles_vocab()
         else:
-            # Argparse should catch this sooner
-            raise RuntimeError("Unknown format", args.format)
+            if args.format == "smiles":
+                alphabet = build_smiles_alphabet()
+            elif args.format == "selfies":
+                alphabet = build_selfies_alphabet()
+            else:
+                # Argparse should catch this sooner
+                raise RuntimeError("Unknown format", args.format)
 
-        # Convert enumerated glyphs to a vocab
-        vocab = build_vocab(alphabet)
+            # Convert enumerated glyphs to a vocab
+            vocab = build_vocab(alphabet)
 
         json.dump(vocab, args.output, indent=4)
+        args.output.write("\n")
 
     elif args.type == "regex":
         if args.format == "smiles":
             build_smiles_pretokenizer()
+        elif args.format == "bigsmiles":
+            build_bigsmiles_pretokenizer()
         elif args.format == "selfies":
             build_selfies_pretokenizer()
         else:
