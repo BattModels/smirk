@@ -161,9 +161,9 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         return len(self.build_inputs_with_special_tokens([], [] if pair else None))
 
     def __check_encode_kwargs(self, kwargs):
-        assert (
-            kwargs.pop("return_overflowing_tokens", False) is False
-        ), "Not implemented"
+        assert kwargs.pop("return_overflowing_tokens", False) is False, (
+            "Not implemented"
+        )
         assert kwargs.pop("split_special_tokens", False) is False, "Not implemented"
         assert kwargs.pop("is_split_into_words", False) is False, "Not implemented"
 
@@ -345,7 +345,8 @@ class SmirkBigSmilesFast(SmirkTokenizerFast):
     def __init__(self, tokenizer_file: Optional[os.PathLike] = None, **kwargs):
         """
         A Chemically-Complete Tokenizer for core BigSMILES line notation.
-
+        For a specification of of the reference see:
+        https://olsenlabmit.github.io/BigSMILES/docs/line_notation.html.
         :param tokenizer_file: Path to a JSON serialize SmirkTokenizerFast tokenizers
         :param kwargs: Additional kwargs are passed to :py:class:`SmirkTokenizerFast`
         """
