@@ -14,6 +14,7 @@ use tokenizers::tokenizer::{
 pub struct BigSmirkPreTokenizer {
     outer: Regex,
     inner: Regex,
+    inner_partial: Regex,
 }
 
 impl BigSmirkPreTokenizer {
@@ -21,6 +22,7 @@ impl BigSmirkPreTokenizer {
         Self {
             outer: Regex::new(&outer).unwrap(),
             inner: Regex::new(&inner).unwrap(),
+            inner_partial: Regex::new(partial_inner_pattern(inner)).unwrap(),
         }
     }
 
@@ -147,11 +149,18 @@ fn append_split(splits: &mut Vec<(Offsets, bool)>, prev: &mut usize, m: Match, o
     *prev = end;
 }
 
+fn partial_inner_pattern(inner: &str) -> &str {
+    let pattern = inner
+        .strip_prefix("^(?:")
+        .and_then(|pattern| pattern.strip_suffix(")$"))
+        .unwrap_or(inner);
+    pattern.strip_prefix('|').unwrap_or(pattern)
+}
+
 impl Pattern for BigSmirkPreTokenizer {
     fn find_matches(&self, inside: &str) -> Result<Vec<(Offsets, bool)>> {
         let mut splits = Vec::with_capacity(inside.len());
         let mut prev = 0;
-        let n_inner_groups = self.inner.captures_len();
         static IS_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\d+$").unwrap());
         static IS_BONDING_DESC: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[\$<>]$").unwrap());
         for m_outer in self.outer.find_iter(inside) {
@@ -165,9 +174,13 @@ impl Pattern for BigSmirkPreTokenizer {
                 let bracketed = &inside[(m_outer.start() + 1)..(m_outer.end() - 1)];
 
                 // Try to match with inner pattern
-                if let Some(capture) = self.inner.captures(&bracketed) {
+                if let Some(capture) = self
+                    .inner
+                    .captures(bracketed)
+                    .or_else(|| self.inner_partial.captures(bracketed))
+                {
                     // Unpack bracketed atoms
-                    for i in 1..n_inner_groups {
+                    for i in 1..capture.len() {
                         if let Some(m) = capture.get(i) {
                             let matched_str = m.as_str();
                             if matched_str.is_empty() {
@@ -254,6 +267,23 @@ pub mod tests {
             .into_iter()
             .map(|(s, _, _)| s.to_string())
             .collect()
+    }
+
+    #[test]
+    fn check_unknown() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(get_split_tokens(&pretok, "C🤷"), ["C", "🤷"]);
+        assert_eq!(get_split_tokens(&pretok, "🤷"), ["🤷"]);
+        assert_eq!(get_split_tokens(&pretok, "🤷C"), ["🤷", "C"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "C[H🤷]"),
+            ["C", "[", "H", "🤷", "]"]
+        );
+        assert_eq!(get_split_tokens(&pretok, "[🤷]"), ["[", "🤷", "]"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "[🤷H]C"),
+            ["[", "🤷", "H", "]", "C"]
+        );
     }
 
     #[test]
