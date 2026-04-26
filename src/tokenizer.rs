@@ -475,3 +475,59 @@ impl From<tokenizers::Encoding> for Encoding {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use tokenizers::PreTokenizer;
+
+    use super::*;
+
+    fn assert_bigsmiles_pre_tokenizer(tokenizer: &SmirkTokenizer) {
+        assert!(matches!(
+            tokenizer.tokenizer.get_pre_tokenizer(),
+            Some(PreTokenizerWrapper::BigSmirkPreTokenizer(_))
+        ));
+    }
+
+    fn get_splits(tokenizer: &SmirkTokenizer, text: &str) -> Vec<String> {
+        let mut pretokenized = PreTokenizedString::from(text);
+        tokenizer
+            .tokenizer
+            .get_pre_tokenizer()
+            .unwrap()
+            .pre_tokenize(&mut pretokenized)
+            .unwrap();
+        pretokenized
+            .get_splits(OffsetReferential::Original, OffsetType::Byte)
+            .into_iter()
+            .map(|(s, _, _)| s.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn new_selects_bigsmiles_pre_tokenizer() {
+        let tokenizer = SmirkTokenizer::__new__(true);
+        assert_bigsmiles_pre_tokenizer(&tokenizer);
+        assert_eq!(
+            get_splits(&tokenizer, "{[$]CC[$]}"),
+            ["{", "[", "$", "]", "C", "C", "[", "$", "]", "}"]
+        );
+    }
+
+    #[test]
+    fn from_vocab_selects_bigsmiles_pre_tokenizer() {
+        let mut vocab_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        vocab_file.push("python");
+        vocab_file.push("smirk");
+        vocab_file.push("vocab_bigsmiles.json");
+
+        let tokenizer = SmirkTokenizer::from_vocab(vocab_file.to_str().unwrap(), true);
+        assert_bigsmiles_pre_tokenizer(&tokenizer);
+        assert_eq!(
+            get_splits(&tokenizer, "{[$]CC[$]}"),
+            ["{", "[", "$", "]", "C", "C", "[", "$", "]", "}"]
+        );
+    }
+}

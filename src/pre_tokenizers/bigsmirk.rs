@@ -270,6 +270,15 @@ pub mod tests {
     }
 
     #[test]
+    fn check_bigsmiles_splits() {
+        let pretok = BigSmirkPreTokenizer::default();
+        let bigsmiles = "{[$]CC[$]}".to_string();
+        let split = ["{", "[", "$", "]", "C", "C", "[", "$", "]", "}"];
+        assert_eq!(get_split_tokens(&pretok, bigsmiles.as_str()), split);
+        assert_eq!(pretok.split(&bigsmiles), split);
+    }
+
+    #[test]
     fn check_unknown() {
         let pretok = BigSmirkPreTokenizer::default();
         assert_eq!(get_split_tokens(&pretok, "C🤷"), ["C", "🤷"]);
