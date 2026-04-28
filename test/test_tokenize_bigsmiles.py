@@ -71,8 +71,10 @@ def test_tokenizer_serialize_pretokenizer_type(bigsmiles, expected_type):
 
     if expected_type is None:
         assert "type" not in config["pre_tokenizer"]
+        assert "bigsmiles_version" not in config["pre_tokenizer"]
     else:
         assert config["pre_tokenizer"].get("type") == expected_type
+        assert config["pre_tokenizer"].get("bigsmiles_version") == "1.1"
 
 
 @pytest.mark.parametrize(
@@ -87,8 +89,11 @@ def test_tokenizer_serialize_pretokenizer_type(bigsmiles, expected_type):
 def test_bigsmiles_tokenizer_save_load(bigsmiles_tokenizer, text):
     with NamedTemporaryFile("w", suffix=".json", delete=False) as file:
         bigsmiles_tokenizer.save(file.name)
+        with open(file.name) as saved:
+            config = json.load(saved)
         loaded = SmirkTokenizer.from_file(file.name)
 
+    assert config["pre_tokenizer"].get("bigsmiles_version") == "1.1"
     original_splits = bigsmiles_tokenizer.pretokenize(text)
     loaded_splits = loaded.pretokenize(text)
     assert original_splits == loaded_splits

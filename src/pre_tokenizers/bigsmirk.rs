@@ -18,6 +18,8 @@ pub struct BigSmirkPreTokenizer {
 }
 
 impl BigSmirkPreTokenizer {
+    pub const BIGSMILES_VERSION: &'static str = "1.1";
+
     pub fn new(outer: &str, inner: &str) -> Self {
         Self {
             outer: Regex::new(&outer).unwrap(),
@@ -62,8 +64,9 @@ impl Serialize for BigSmirkPreTokenizer {
     where
         S: serde::Serializer,
     {
-        let mut state = serializer.serialize_struct("BigSmirkPreTokenizer", 3)?;
+        let mut state = serializer.serialize_struct("BigSmirkPreTokenizer", 4)?;
         state.serialize_field("type", "BigSmirkPreTokenizer")?;
+        state.serialize_field("bigsmiles_version", Self::BIGSMILES_VERSION)?;
         state.serialize_field("outer", self.outer.as_str())?;
         state.serialize_field("inner", self.inner.as_str())?;
         state.end()
@@ -77,7 +80,7 @@ impl<'de> Deserialize<'de> for BigSmirkPreTokenizer {
     {
         deserializer.deserialize_struct(
             "BigSmirkPreTokenizer",
-            &["type", "outer", "inner"],
+            &["type", "bigsmiles_version", "outer", "inner"],
             BigSmirkPreTokenizerVisitor,
         )
     }
@@ -102,6 +105,9 @@ impl<'de> Visitor<'de> for BigSmirkPreTokenizerVisitor {
             match key.as_ref() {
                 "type" => {
                     type_field = Some(map.next_value()?);
+                }
+                "bigsmiles_version" => {
+                    let _: serde::de::IgnoredAny = map.next_value()?;
                 }
                 "outer" => {
                     if let Some(x) = map.next_value()? {
@@ -237,6 +243,15 @@ pub mod tests {
     fn serialize_default() {
         let default = BigSmirkPreTokenizer::default();
         check_serde(&default);
+    }
+
+    #[test]
+    fn serializes_bigsmiles_version() {
+        let value = serde_json::to_value(BigSmirkPreTokenizer::default()).unwrap();
+        assert_eq!(
+            value.get("bigsmiles_version").and_then(|v| v.as_str()),
+            Some(BigSmirkPreTokenizer::BIGSMILES_VERSION)
+        );
     }
 
     #[test]
