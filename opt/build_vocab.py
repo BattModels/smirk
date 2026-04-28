@@ -207,7 +207,7 @@ def build_bigsmiles_pretokenizer():
                 r"\(|\)",  # branches
                 r"\{|\}",  # stochastic object delimiters
                 r",|;",  # repeat unit separator and end group separator
-                BIGSMILES_LABEL,  # fragment and abstract spec labels
+                BIGSMILES_LABEL,  # bare spec labels
                 r"\[(?:[^\[\]]+|\[[^\[\]]*\])*\]",  # bracketed atoms/descriptors
             ],
             public=True,
@@ -224,7 +224,7 @@ def build_bigsmiles_pretokenizer():
                 r"|",
                 rf"(\$|<|>)(\d+)?(\[)(\$|<|>|{BIGSMILES_LABEL})(\d+)?(\])(\d+)",
                 r"|",
-                r"(#)([!-~]+)",
+                r"(#[!-~]+)",
                 r"|",
                 r"(\d+)?",
                 r"({BRACKETED_SYMBOL})",
@@ -263,7 +263,7 @@ def build_bigsmiles_pretokenizer():
             separator="",
         )
     )
-    print(const_str("FRAGMENT_REFERENCE", r"(#)([!-~]+)", public=True))
+    print(const_str("FRAGMENT_REFERENCE", r"(#[!-~]+)", public=True))
 
 
 def build_selfies_pretokenizer():
