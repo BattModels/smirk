@@ -38,12 +38,12 @@ const BRACKETED_SYMBOL: &'static str = concat!(
 const CHIRAL: &'static str = r"@(?:@|AL|OH|SP|T(?:B|H))?";
 
 pub const MATCH_OUTER_BIGSMILES: &'static str = concat!(
-    r"Br?|Cl?|F|I|N|O|P|S|", // organic subset elements
-    r"b|c|n|o|p|s|",         // Aromatic organic subset
-    r"\*|",                  // Wildcard
-    r"[\.\-=\#\$:/\\]|",     // Bonds
-    r"\d|%|",                // Ring closures
-    r"\(|\)|",               // Branch delimiters in SMILES and BigSMILES
+    r"Br?|Cl?|F|I|N|O|P|S|",           // organic subset elements
+    r"b|c|n|o|p|s|",                   // Aromatic organic subset
+    r"\*|",                            // Wildcard
+    r"[\.\-=\#\$:/\\]|",               // Bonds
+    r"\d|%|",                          // Ring closures
+    r"\(|\)|",                         // Branch delimiters in SMILES and BigSMILES
     r"\{|\}|",                         // Stochastic object delimiters
     r",|;|",                           // Repeat unit separator and end group separator
     r"[A-Z][A-Za-z0-9']*|",            // Bare spec labels
