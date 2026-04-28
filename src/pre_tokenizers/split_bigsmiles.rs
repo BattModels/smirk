@@ -43,10 +43,10 @@ pub const MATCH_OUTER_BIGSMILES: &'static str = concat!(
     r"\*|",                  // Wildcard
     r"[\.\-=\#\$:/\\]|",     // Bonds
     r"\d|%|",                // Ring closures
-    r"\(|\)|",
+    r"\(|\)|",               // Branch delimiters in SMILES and BigSMILES
     r"\{|\}|",                         // Stochastic object delimiters
     r",|;|",                           // Repeat unit separator and end group separator
-    r"[A-Z][A-Za-z0-9']*|",            // Fragment and abstract spec labels
+    r"[A-Z][A-Za-z0-9']*|",            // Bare spec labels
     r"\[(?:[^\[\]]+|\[[^\[\]]*\])*\]", // Bracketed atoms/descriptors
 );
 
@@ -58,7 +58,7 @@ pub const MATCH_INNER_BIGSMILES: &'static str = formatcp!(concat!(
     r"|",
     r"(\$|<|>)(\d+)?(\[)(\$|<|>|[A-Z][A-Za-z0-9']*)(\d+)?(\])(\d+)",
     r"|",
-    r"(#)([!-~]+)",
+    r"(#[!-~]+)",
     r"|",
     r"(\d+)?",
     r"({BRACKETED_SYMBOL})",
@@ -81,4 +81,4 @@ pub const LADDER_BONDING_DESCRIPTOR: &'static str = concat!(
     r"(\d+)",                                     // Group id
 );
 
-pub const FRAGMENT_REFERENCE: &'static str = r"(#)([!-~]+)";
+pub const FRAGMENT_REFERENCE: &'static str = r"(#[!-~]+)";

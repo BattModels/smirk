@@ -4,6 +4,7 @@ use regex::{Match, Regex};
 use serde::de::Visitor;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use tokenizers::tokenizer::pattern::Pattern;
 use tokenizers::tokenizer::{
@@ -141,8 +142,139 @@ impl<'de> Visitor<'de> for BigSmirkPreTokenizerVisitor {
 
 impl PreTokenizer for BigSmirkPreTokenizer {
     fn pre_tokenize(&self, pretokenized: &mut PreTokenizedString) -> Result<()> {
+        pretokenized.normalize(|normalized| {
+            if let Some(expanded) = expand_fragment_definitions(normalized.get()) {
+                static MATCH_FULL_STRING: Lazy<Regex> =
+                    Lazy::new(|| Regex::new(r"(?s)^.*$").unwrap());
+                normalized.replace(&*MATCH_FULL_STRING, &expanded)?;
+            }
+            Ok(())
+        })?;
         pretokenized.split(|_, s| s.split(self.to_owned(), SplitDelimiterBehavior::Isolated))
     }
+}
+
+fn expand_fragment_definitions(input: &str) -> Option<String> {
+    let (main, definitions) = split_fragment_definitions(input)?;
+    let mut expanded = main.to_string();
+
+    for _ in 0..=definitions.len() {
+        let (next, changed) = expand_fragment_references_once(&expanded, &definitions);
+        expanded = next;
+        if !changed {
+            break;
+        }
+    }
+
+    Some(expanded)
+}
+
+fn split_fragment_definitions(input: &str) -> Option<(&str, HashMap<String, String>)> {
+    for (start, _) in input.match_indices(".{#") {
+        if let Some(definitions) = parse_fragment_definition_suffix(&input[start..]) {
+            return Some((&input[..start], definitions));
+        }
+    }
+    None
+}
+
+fn parse_fragment_definition_suffix(suffix: &str) -> Option<HashMap<String, String>> {
+    let mut definitions = HashMap::new();
+    let mut pos = 0;
+
+    while pos < suffix.len() {
+        if !suffix[pos..].starts_with(".{#") {
+            return None;
+        }
+        pos += ".{#".len();
+
+        let name_start = pos;
+        while pos < suffix.len() {
+            let c = suffix[pos..].chars().next().unwrap();
+            if c == '=' {
+                break;
+            }
+            pos += c.len_utf8();
+        }
+        let name = &suffix[name_start..pos];
+        if name.is_empty() || !is_fragment_definition_name(name) {
+            return None;
+        }
+        if !suffix[pos..].starts_with('=') {
+            return None;
+        }
+        pos += '='.len_utf8();
+
+        let value_start = pos;
+        let mut depth = 1;
+        while pos < suffix.len() {
+            let c = suffix[pos..].chars().next().unwrap();
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        definitions.insert(name.to_string(), suffix[value_start..pos].to_string());
+                        pos += c.len_utf8();
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            pos += c.len_utf8();
+        }
+
+        if depth != 0 {
+            return None;
+        }
+    }
+
+    Some(definitions)
+}
+
+fn is_fragment_definition_name(name: &str) -> bool {
+    name.chars()
+        .all(|c| matches!(c, '!'..='~') && !matches!(c, '=' | '{' | '}' | '[' | ']'))
+}
+
+fn expand_fragment_references_once(
+    input: &str,
+    definitions: &HashMap<String, String>,
+) -> (String, bool) {
+    let mut expanded = String::with_capacity(input.len());
+    let mut changed = false;
+    let mut pos = 0;
+
+    while pos < input.len() {
+        let rest = &input[pos..];
+        if let Some((name, len)) = bracketed_fragment_reference(rest) {
+            if let Some(replacement) = definitions.get(name) {
+                expanded.push_str(replacement);
+                pos += len;
+                changed = true;
+                continue;
+            }
+        }
+
+        let c = rest.chars().next().unwrap();
+        expanded.push(c);
+        pos += c.len_utf8();
+    }
+
+    (expanded, changed)
+}
+
+fn bracketed_fragment_reference(input: &str) -> Option<(&str, usize)> {
+    if !input.starts_with("[#") {
+        return None;
+    }
+
+    let end = input.find(']')?;
+    let name = &input[2..end];
+    if name.is_empty() {
+        return None;
+    }
+    Some((name, end + ']'.len_utf8()))
 }
 
 fn append_split(splits: &mut Vec<(Offsets, bool)>, prev: &mut usize, m: Match, offset: usize) {
@@ -263,6 +395,11 @@ pub mod tests {
     fn all_matches(tok: &BigSmirkPreTokenizer, bigsmiles: &str) -> bool {
         let splits = tok.find_matches(bigsmiles).unwrap();
         splits.into_iter().all(|(_s, m)| m)
+    }
+
+    fn all_matches_after_fragment_expansion(tok: &BigSmirkPreTokenizer, bigsmiles: &str) -> bool {
+        let expanded = expand_fragment_definitions(bigsmiles).unwrap_or_else(|| bigsmiles.into());
+        all_matches(tok, &expanded)
     }
 
     fn get_matched_pretokens(tok: &BigSmirkPreTokenizer, bigsmiles: &str) -> Vec<String> {
@@ -569,21 +706,49 @@ pub mod tests {
     #[test]
     fn test_fragment_reference() {
         let pretok = BigSmirkPreTokenizer::default();
-        assert_eq!(get_split_tokens(&pretok, "[#PEG]"), ["[", "#", "PEG", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[#PEG]"), ["[", "#PEG", "]"]);
         assert_eq!(
             get_split_tokens(&pretok, "[#Styrene]"),
-            ["[", "#", "Styrene", "]"]
+            ["[", "#Styrene", "]"]
         );
-        assert_eq!(get_split_tokens(&pretok, "[#+]"), ["[", "#", "+", "]"]);
-        assert_eq!(
-            get_split_tokens(&pretok, "[#PEG-1]"),
-            ["[", "#", "PEG-1", "]"]
-        );
-        assert_eq!(get_split_tokens(&pretok, "[#A]"), ["[", "#", "A", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[#+]"), ["[", "#+", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[#PEG-1]"), ["[", "#PEG-1", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[#A]"), ["[", "#A", "]"]);
         assert_eq!(
             get_split_tokens(&pretok, "{[$][#Styrene][$]}"),
-            ["{", "[", "$", "]", "[", "#", "Styrene", "]", "[", "$", "]", "}"]
+            ["{", "[", "$", "]", "[", "#Styrene", "]", "[", "$", "]", "}"]
         );
+    }
+
+    #[test]
+    fn test_fragment_definition_expansion() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "C([#R]).{#R=CO}"),
+            ["C", "(", "C", "O", ")"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "{[#A]CC[#B]}.{#A=[<]}.{#B=[>]}"),
+            ["{", "[", "<", "]", "C", "C", "[", ">", "]", "}"]
+        );
+    }
+
+    #[test]
+    fn test_fragment_definitions_do_not_expand_bare_labels() {
+        let pretok = BigSmirkPreTokenizer::default();
+        let tokens = get_split_tokens(
+            &pretok,
+            "A([$1[<1]1])R(A'[$1[>1]1])(A[$1[<1]2])A'[$1[>1]2].{#A=C}.{#A'=C}.{#R=C}",
+        );
+
+        assert_eq!(
+            tokens
+                .iter()
+                .filter(|token| matches!(token.as_str(), "A" | "A'" | "R"))
+                .count(),
+            5
+        );
+        assert!(!tokens.iter().any(|token| token == "{" || token == "="));
     }
 
     #[test]
@@ -645,7 +810,7 @@ pub mod tests {
             .enumerate()
             .filter(|(_, x)| !x.starts_with("#") && !x.is_empty())
         {
-            if !all_matches(&pretok, line) {
+            if !all_matches_after_fragment_expansion(&pretok, line) {
                 failures.push(format!("line {}: {}", idx + 1, line));
             }
         }
