@@ -26,7 +26,7 @@ changelog = "https://github.com/BattModels/smirk/blob/main/CHANGELOG.md"
 dev = [
     "pytest~=8.3",
     "parameterized==0.9.0",
-    "ruff~=0.9.4",
+    "ruff>=0.9.4,<0.16.0",
     "torch~=2.0",
     "numpy~=2.0",
     "pre-commit~=4.1.0",
