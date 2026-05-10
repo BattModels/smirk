@@ -4,8 +4,12 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    versioning-strategy: increase
+    versioning-strategy: increase-if-necessary
   - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
