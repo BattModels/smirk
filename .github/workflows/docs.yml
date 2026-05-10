@@ -17,7 +17,7 @@ jobs:
           cache-dependency-glob: pyproject.toml
       - run: uv sync --group docs
       - run: uv run --group docs --with pip sphinx-build docs build/html
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: build/html/
   deploy:
