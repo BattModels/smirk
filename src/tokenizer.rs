@@ -143,7 +143,7 @@ impl SmirkTokenizer {
             .map(|x| EncodeInput::from(x.to_string()))
             .collect();
         // Release the GIL while tokenizing batch
-        let out = py.allow_threads(|| {
+        let out = py.detach(|| {
             self.tokenizer
                 .encode_batch_char_offsets(inputs, add_special_tokens)
                 .unwrap()
@@ -161,7 +161,7 @@ impl SmirkTokenizer {
         ids: Vec<Vec<u32>>,
         skip_special_tokens: bool,
     ) -> PyResult<Vec<String>> {
-        py.allow_threads(|| {
+        py.detach(|| {
             let sequences = ids.iter().map(|x| &x[..]).collect::<Vec<&[u32]>>();
             Ok(self
                 .tokenizer
@@ -446,7 +446,7 @@ impl SmirkTokenizer {
 
         // Train tokenizer
         let mut trainer: TrainerWrapper = builder.build().unwrap().into();
-        let _ = py.allow_threads(|| tokenizer.train_from_files(&mut trainer, files).unwrap());
+        let _ = py.detach(|| tokenizer.train_from_files(&mut trainer, files).unwrap());
         Ok(SmirkTokenizer::new(tokenizer))
     }
 }
