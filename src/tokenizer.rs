@@ -349,7 +349,9 @@ impl SmirkTokenizer {
                 })
             })
             .collect::<Result<Vec<AddedToken>, PyErr>>()?;
-        Ok(self.tokenizer.add_tokens(&tokens))
+        self.tokenizer
+            .add_tokens(tokens)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     #[pyo3(signature = (files, **kwargs))]
