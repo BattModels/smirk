@@ -102,13 +102,14 @@ impl<'de> Visitor<'de> for BigSmirkPreTokenizerVisitor {
         let mut outer: Option<String> = None;
         let mut inner: Option<String> = None;
         let mut type_field: Option<String> = None;
+        let mut bigsmiles_version: Option<String> = None;
         while let Some(key) = map.next_key::<String>()? {
             match key.as_ref() {
                 "type" => {
                     type_field = Some(map.next_value()?);
                 }
                 "bigsmiles_version" => {
-                    let _: serde::de::IgnoredAny = map.next_value()?;
+                    bigsmiles_version = Some(map.next_value()?);
                 }
                 "outer" => {
                     if let Some(x) = map.next_value()? {
@@ -131,6 +132,18 @@ impl<'de> Visitor<'de> for BigSmirkPreTokenizerVisitor {
                 return Err(serde::de::Error::custom(
                     "Missing or invalid type field for BigSmirkPreTokenizer",
                 ));
+            }
+        }
+        match bigsmiles_version.as_deref() {
+            Some(BigSmirkPreTokenizer::BIGSMILES_VERSION) => {}
+            Some(version) => {
+                return Err(serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(version),
+                    &"BigSMILES version `1.1`",
+                ));
+            }
+            None => {
+                return Err(serde::de::Error::missing_field("bigsmiles_version"));
             }
         }
         Ok(BigSmirkPreTokenizer::new(
@@ -384,6 +397,30 @@ pub mod tests {
             value.get("bigsmiles_version").and_then(|v| v.as_str()),
             Some(BigSmirkPreTokenizer::BIGSMILES_VERSION)
         );
+    }
+
+    #[test]
+    fn rejects_missing_bigsmiles_version() {
+        let mut value = serde_json::to_value(BigSmirkPreTokenizer::default()).unwrap();
+        value.as_object_mut().unwrap().remove("bigsmiles_version");
+
+        let err = serde_json::from_value::<BigSmirkPreTokenizer>(value).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("missing field `bigsmiles_version`"));
+    }
+
+    #[test]
+    fn rejects_unsupported_bigsmiles_versions() {
+        for version in ["1.0", "1.2", "2.0", "not-a-version"] {
+            let mut value = serde_json::to_value(BigSmirkPreTokenizer::default()).unwrap();
+            value["bigsmiles_version"] = serde_json::Value::String(version.to_string());
+
+            let err = serde_json::from_value::<BigSmirkPreTokenizer>(value).unwrap_err();
+            let message = err.to_string();
+            assert!(message.contains(&format!("invalid value: string \"{}\"", version)));
+            assert!(message.contains("expected BigSMILES version `1.1`"));
+        }
     }
 
     #[test]
