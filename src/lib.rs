@@ -1,5 +1,6 @@
 mod gpe;
 mod pre_tokenizers;
+mod shared;
 mod tokenizer;
 mod wrapper;
 
