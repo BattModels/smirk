@@ -78,3 +78,23 @@ def test_training_is_piece_set_deterministic(config):
     # §3.2 determinism amendment: the Unigram piece *set* is reproducible
     # across retraining on identical input (ids / scores may permute).
     assert _piece_set(**config) == _piece_set(**config)
+
+
+def test_max_piece_length_caps_multi_glyph_pieces():
+    # main.tex §3.2: max_piece_length is a settable knob. A one-glyph cap
+    # leaves HuggingFace no multi-glyph pieces to seed, so the trained
+    # vocabulary is strictly smaller than an uncapped run at the same target.
+    capped = smirk.train_unigram(
+        [str(SMILE_TEST_FILE)], vocab_size=256, max_piece_length=1
+    )
+    uncapped = smirk.train_unigram(
+        [str(SMILE_TEST_FILE)], vocab_size=256, max_piece_length=128
+    )
+    assert capped.vocab_size < uncapped.vocab_size
+
+
+def test_seed_size_knob_is_accepted():
+    # main.tex §3.2: seed_size is a settable knob (the Phase-2.5 seed-cap
+    # spot-check). A reduced cap still trains a vocabulary past the baseline.
+    tok = smirk.train_unigram([str(SMILE_TEST_FILE)], vocab_size=256, seed_size=2048)
+    assert tok.vocab_size > smirk.SmirkTokenizerFast().vocab_size

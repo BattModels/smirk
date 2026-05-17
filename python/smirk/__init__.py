@@ -439,15 +439,17 @@ def train_unigram(
     vocab_size: int = 1024,
     merge_brackets: bool = False,
     split_structure: bool = True,
+    seed_size: int = 1_000_000,
+    max_piece_length: int = 128,
 ) -> SmirkTokenizerFast:
     """
     Train a Smirk Unigram-LM Tokenizer from a corpus of SMILES encodings.
 
     The sibling of :py:func:`train_gpe`: it shares the same Layer A/B/C
     pre-tokenization but fits a unigram language model, delegating the
-    EM/pruning loop to HuggingFace's ``UnigramTrainer``. The Unigram
-    hyperparameters (``n_sub_iterations``, ``shrinking_factor``,
-    ``max_piece_length``, ``seed_size``) are fixed in the Rust trainer.
+    EM/pruning loop to HuggingFace's ``UnigramTrainer``. The remaining Unigram
+    hyperparameters (``n_sub_iterations``, ``shrinking_factor``) are fixed in
+    the Rust trainer.
 
     :param files: List of files containing the corpus to train the tokenizer on
     :param ref: The initial tokenizer to start from when training. Defaults to
@@ -460,6 +462,10 @@ def train_unigram(
     :param merge_brackets: If true, pieces spanning brackets (`[` or `]`) are allowed
     :param split_structure: If true, will split SMILES encoding on structural
         elements before training (i.e. pieces do not span structural elements)
+    :param seed_size: HuggingFace ``UnigramTrainer`` seed-pool cap. The default
+        (1_000_000) is the preregistered value; expose it to vary the seed cap
+    :param max_piece_length: Maximum piece length in glyphs. The default (128)
+        is the preregistered value
     """
     ref = ref or SmirkTokenizerFast()
     tokenizer = ref._tokenizer.train_unigram(
@@ -468,5 +474,7 @@ def train_unigram(
         vocab_size=vocab_size,
         merge_brackets=merge_brackets,
         split_structure=split_structure,
+        seed_size=seed_size,
+        max_piece_length=max_piece_length,
     )
     return SmirkTokenizerFast(tokenizer=tokenizer)

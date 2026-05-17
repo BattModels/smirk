@@ -492,6 +492,12 @@ impl SmirkTokenizer {
                     "split_structure" => {
                         opt_split_structure = value.extract().unwrap();
                     }
+                    "seed_size" => {
+                        builder.seed_size(value.extract().unwrap());
+                    }
+                    "max_piece_length" => {
+                        builder.max_piece_length(value.extract().unwrap());
+                    }
                     _ => println!("Unknown parameter {:?} ignoring", key),
                 }
             }

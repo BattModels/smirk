@@ -10,11 +10,12 @@ use super::model::{UnigramModel, UnigramPiece};
 use crate::pua;
 use crate::shared::{compute_alphabet, tokenize_words};
 
-// §3.2 Unigram-LM hyperparameters, frozen by the preregistration.
+// §3.2 Unigram-LM hyperparameters frozen by the preregistration. `seed_size`
+// and `max_piece_length` are also §3.2-frozen but their values are the
+// `UnigramTrainer` field defaults below — exposed as knobs so Phase-2 probes
+// (the seed-cap spot-check, the max-piece-length contingency) can vary them.
 const N_SUB_ITERATIONS: u32 = 2;
 const SHRINKING_FACTOR: f64 = 0.75;
-const MAX_PIECE_LENGTH: usize = 128;
-const SEED_SIZE: usize = 1_000_000;
 
 /// Unigram-LM sibling trainer — the Unigram arm's analogue of `GpeTrainer`.
 ///
@@ -40,6 +41,13 @@ pub struct UnigramTrainer {
     pub special_tokens: Vec<AddedToken>,
     /// Layer C: whether `[` / `]` glyphs are kept in the training stream.
     pub merge_brackets: bool,
+    /// HuggingFace `UnigramTrainer` seed-pool cap. §3.2 freezes this at the
+    /// default (1_000_000); exposed as a knob for the Phase-2.5 seed-cap
+    /// spot-check.
+    pub seed_size: usize,
+    /// Maximum piece length, in glyphs. §3.2 freezes this at the default
+    /// (128); exposed as a knob for the Phase-2 max-piece-length contingency.
+    pub max_piece_length: usize,
     /// Internal corpus word-count map, populated by `feed`.
     word_counts: HashMap<String, u64>,
 }
@@ -53,6 +61,8 @@ impl Default for UnigramTrainer {
             limit_alphabet: None,
             special_tokens: Vec::new(),
             merge_brackets: false,
+            seed_size: 1_000_000,
+            max_piece_length: 128,
             word_counts: HashMap::new(),
         }
     }
@@ -126,8 +136,8 @@ impl UnigramTrainer {
             .vocab_size(hf_vocab_size)
             .n_sub_iterations(N_SUB_ITERATIONS)
             .shrinking_factor(SHRINKING_FACTOR)
-            .max_piece_length(MAX_PIECE_LENGTH)
-            .seed_size(SEED_SIZE)
+            .max_piece_length(self.max_piece_length)
+            .seed_size(self.seed_size)
             .build()
             .expect("UnigramTrainer hyperparameters are valid");
         let mut hf_model = HfUnigram::default();
@@ -290,5 +300,49 @@ mod tests {
         a.sort();
         b.sort();
         assert_eq!(a, b);
+    }
+
+    /// Build a trainer over the toy corpus' alphabet, overriding one knob.
+    fn trainer_with(seed_size: usize, max_piece_length: usize) -> UnigramTrainer {
+        let alphabet: HashSet<String> =
+            ["C", "O", "S", "N"].into_iter().map(String::from).collect();
+        UnigramTrainer {
+            vocab_size: 64,
+            alphabet,
+            seed_size,
+            max_piece_length,
+            ..Default::default()
+        }
+    }
+
+    fn empty_model() -> UnigramModel {
+        UnigramModel::new(
+            "[UNK]".to_string(),
+            SmirkPreTokenizer::default(),
+            Vec::new(),
+        )
+    }
+
+    #[test]
+    fn max_piece_length_one_yields_only_base_pieces() {
+        // A one-glyph cap leaves HuggingFace no multi-glyph pieces to seed, so
+        // the trained vocabulary is exactly the base alphabet plus the unk.
+        let mut model = empty_model();
+        trainer_with(1_000_000, 1)
+            .do_train(&word_counts(), &mut model)
+            .unwrap();
+        assert_eq!(model.get_vocab_size(), 5); // C, O, S, N + [UNK]
+    }
+
+    #[test]
+    fn a_custom_seed_size_still_trains() {
+        // The seed_size knob reaches HuggingFace's builder and trains cleanly.
+        let mut model = empty_model();
+        trainer_with(32, 128)
+            .do_train(&word_counts(), &mut model)
+            .unwrap();
+        for glyph in ["C", "O", "S", "N"] {
+            assert!(model.token_to_id(glyph).is_some());
+        }
     }
 }
