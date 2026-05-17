@@ -402,6 +402,7 @@ def train_gpe(
     vocab_size: int = 1024,
     merge_brackets: bool = False,
     split_structure: bool = True,
+    scaffold_log_path: Optional[str] = None,
 ) -> SmirkTokenizerFast:
     """
     Train a Smirk-GPE Tokenizer from a corpus of SMILES encodings.
@@ -414,6 +415,10 @@ def train_gpe(
     :param merge_brackets: If true, merges with brackets (`[` or `]`) are allowed
     :param split_structure: If true, will split SMILES encoding on structural elements,
         before considering merges (i.e. merges across structural elements are not allowed)
+    :param scaffold_log_path: If set, the trainer streams a per-merge-step JSONL
+        scaffold-instrumentation log to this path. Logging-only — it does not
+        alter merge selection, so the trained tokenizer is byte-identical to a
+        run with ``scaffold_log_path=None``
     """
     ref = ref or SmirkTokenizerFast()
     tokenizer = ref._tokenizer.train(
@@ -422,6 +427,7 @@ def train_gpe(
         vocab_size=vocab_size,
         merge_brackets=merge_brackets,
         split_structure=split_structure,
+        scaffold_log_path=scaffold_log_path,
     )
     return SmirkTokenizerFast(tokenizer=tokenizer)
 

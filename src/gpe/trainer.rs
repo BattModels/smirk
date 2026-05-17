@@ -2,6 +2,9 @@ use derive_builder::Builder;
 use macro_rules_attribute::derive;
 use serde::{Deserialize, Serialize};
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 use tokenizers::parallelism::{MaybeParallelBridge, MaybeParallelRefIterator};
 use tokenizers::{AddedToken, Result, Trainer};
 
@@ -37,6 +40,37 @@ impl Ord for Merge {
     }
 }
 
+/// Header line of a scaffold-instrumentation log (Step 1.5, main.tex §3.2).
+///
+/// One header object, followed by one [`ScaffoldRecord`] line per committed
+/// merge. `base_alphabet` is the pre-merge vocabulary as `[id, glyph]` pairs
+/// in id order, so the log reconstructs every token's surface form on its own.
+#[derive(Serialize)]
+struct ScaffoldHeader<'a> {
+    format: &'a str,
+    min_frequency: u64,
+    vocab_size: usize,
+    merge_brackets: bool,
+    limit_alphabet: Option<usize>,
+    base_alphabet: Vec<(u32, &'a str)>,
+}
+
+/// One committed-merge record of a scaffold-instrumentation log (main.tex §3.2).
+///
+/// `candidate_freq` is the selected merge candidate's frequency at this step.
+/// `standalone` carries the running standalone frequency of the (left, right,
+/// merged) tokens this merge touched — no other token's standalone frequency
+/// changes, so the log is delta-encoded and replays into the full vector.
+#[derive(Serialize)]
+struct ScaffoldRecord<'a> {
+    step: usize,
+    pair: (u32, u32),
+    new_id: u32,
+    new_token: &'a str,
+    candidate_freq: u64,
+    standalone: Vec<(u32, i64)>,
+}
+
 // Glyph Pair Encoding - BPE but supports multi-character "glyphs"
 #[derive(Builder, Debug, Deserialize, Serialize, Clone)]
 #[builder(default)]
@@ -55,6 +89,12 @@ pub struct GpeTrainer {
     pub merge_brackets: bool,
     // Internal Map for tracking word counts
     word_counts: HashMap<String, u64>,
+    // Step 1.5 scaffold instrumentation (vocab-tokenizer-clms study, main.tex
+    // §3.2): when `Some`, `do_train` streams a per-merge-step JSONL log to this
+    // path. `None` (the default) leaves training byte-identical to stock
+    // output — the instrumentation is logging-only and never alters a merge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scaffold_log_path: Option<PathBuf>,
 }
 
 impl Default for GpeTrainer {
@@ -67,6 +107,7 @@ impl Default for GpeTrainer {
             special_tokens: Vec::new(),
             merge_brackets: false,
             word_counts: HashMap::new(),
+            scaffold_log_path: None,
         }
     }
 }
@@ -193,6 +234,45 @@ impl GpeTrainer {
         );
         let (mut pair_counts, mut where_to_update) = self.count_pairs(&words, &counts);
 
+        // --- Step 1.5 scaffold instrumentation (logging-only; main.tex §3.2) ---
+        // When `scaffold_log_path` is set, stream a per-merge-step JSONL log:
+        // the running standalone frequency of every token a merge touches and
+        // that merge's selected-candidate frequency. This only reads training
+        // state and writes a side file — it never alters merge selection, so
+        // BPE artifacts stay byte-identical to stock output.
+        let mut scaffold_writer = match &self.scaffold_log_path {
+            Some(path) => {
+                let file = File::create(path)
+                    .map_err(|e| format!("scaffold_log_path {}: {e}", path.display()))?;
+                Some(BufWriter::new(file))
+            }
+            None => None,
+        };
+        // Running standalone frequency per token id (current segmentation).
+        let mut standalone: HashMap<u32, i64> = HashMap::new();
+        if let Some(writer) = scaffold_writer.as_mut() {
+            for (i, word) in words.iter().enumerate() {
+                for &glyph in word.glyphs() {
+                    *standalone.entry(glyph).or_insert(0) += counts[i];
+                }
+            }
+            let base_alphabet: Vec<(u32, &str)> = id_to_word
+                .iter()
+                .enumerate()
+                .map(|(id, token)| (id as u32, token.as_str()))
+                .collect();
+            let header = ScaffoldHeader {
+                format: "smirk-scaffold-log/v1",
+                min_frequency: self.min_frequency,
+                vocab_size: self.vocab_size,
+                merge_brackets: self.merge_brackets,
+                limit_alphabet: self.limit_alphabet,
+                base_alphabet,
+            };
+            serde_json::to_writer(&mut *writer, &header)?;
+            writer.write_all(b"\n")?;
+        }
+
         // Build a priority queue of merges
         let mut queue = BinaryHeap::new();
         where_to_update.drain().for_each(|(pair, pos)| {
@@ -247,6 +327,52 @@ impl GpeTrainer {
                 })
                 .collect::<Vec<_>>();
 
+            // --- scaffold instrumentation: log this committed merge ---
+            // `new_token_id` is brand-new, so each of its occurrences in the
+            // just-merged words was created here; counting them gives the
+            // exact number of (left, right) pairs collapsed. `top.count` is
+            // the selected candidate's post-recount frequency.
+            if let Some(writer) = scaffold_writer.as_mut() {
+                let (left, right) = top.pair;
+                let created: i64 = top
+                    .pos
+                    .iter()
+                    .map(|&i| {
+                        let occ = words[i]
+                            .glyphs()
+                            .iter()
+                            .filter(|&&g| g == new_token_id)
+                            .count() as i64;
+                        occ * counts[i]
+                    })
+                    .sum();
+                standalone.insert(new_token_id, created);
+                // Each collapsed pair consumes one `left` and one `right`
+                // (two `left`s when left == right) and creates the new token.
+                let touched = if left == right {
+                    *standalone.entry(left).or_insert(0) -= 2 * created;
+                    vec![(left, standalone[&left]), (new_token_id, created)]
+                } else {
+                    *standalone.entry(left).or_insert(0) -= created;
+                    *standalone.entry(right).or_insert(0) -= created;
+                    vec![
+                        (left, standalone[&left]),
+                        (right, standalone[&right]),
+                        (new_token_id, created),
+                    ]
+                };
+                let record = ScaffoldRecord {
+                    step: merges.len() - 1,
+                    pair: top.pair,
+                    new_id: new_token_id,
+                    new_token: &id_to_word[new_token_id as usize],
+                    candidate_freq: top.count,
+                    standalone: touched,
+                };
+                serde_json::to_writer(&mut *writer, &record)?;
+                writer.write_all(b"\n")?;
+            }
+
             // Update pair_counts with changes
             for (change, iw) in changes {
                 // Update pair_count
@@ -278,6 +404,11 @@ impl GpeTrainer {
                 let count = pair_counts[&pair] as u64;
                 queue.push(Merge { pair, count, pos });
             });
+        }
+
+        // Flush the scaffold log, surfacing any deferred write error.
+        if let Some(mut writer) = scaffold_writer {
+            writer.flush()?;
         }
 
         // Update Model
@@ -336,7 +467,7 @@ mod tests {
     use super::*;
     use crate::wrapper::PreTokenizerWrapper;
     use crate::{gpe::GPE, pre_tokenizers::split_structure};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tokenizers::Model;
     use tokenizers::{
         normalizers::Strip, DecoderWrapper, PostProcessorWrapper, TokenizerBuilder, TokenizerImpl,
@@ -409,5 +540,129 @@ mod tests {
         assert!(tokenizer
             .get_vocab(true)
             .contains_key(&tokenizer.get_model().unk_token))
+    }
+
+    // --- Step 1.5 scaffold instrumentation ---
+
+    /// The `test_trainer` corpus, reused by the scaffold-instrumentation tests.
+    fn scaffold_corpus() -> HashMap<String, u64> {
+        [
+            ("C", 4),
+            ("CSCCSCCS", 2),
+            ("CCSC", 1),
+            ("[C@H]", 2),
+            ("(", 3),
+            (")", 4),
+            ("CS", 3),
+        ]
+        .into_iter()
+        .map(|(s, c)| (s.into(), c))
+        .collect()
+    }
+
+    /// Train with a scaffold log written to `path`, returning the trained model.
+    fn train_with_scaffold_log(word_counts: &HashMap<String, u64>, path: &Path) -> GPE {
+        let trainer = GpeTrainer::builder()
+            .scaffold_log_path(Some(path.to_path_buf()))
+            .build()
+            .unwrap();
+        let mut model = GPE::default();
+        trainer.do_train(word_counts, &mut model).unwrap();
+        model
+    }
+
+    /// Parse a scaffold log into its (header, per-merge records).
+    fn read_scaffold_log(path: &Path) -> (serde_json::Value, Vec<serde_json::Value>) {
+        let text = std::fs::read_to_string(path).unwrap();
+        let mut lines = text.lines();
+        let header: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+        let records = lines.map(|l| serde_json::from_str(l).unwrap()).collect();
+        (header, records)
+    }
+
+    #[test]
+    fn scaffold_log_does_not_change_the_model() {
+        let word_counts = scaffold_corpus();
+        let mut stock = GPE::default();
+        GpeTrainer::default()
+            .do_train(&word_counts, &mut stock)
+            .unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("scaffold.jsonl");
+        let instrumented = train_with_scaffold_log(&word_counts, &log);
+
+        assert_eq!(instrumented.vocab, stock.vocab);
+        assert_eq!(instrumented.merges, stock.merges);
+        assert!(log.is_file());
+    }
+
+    #[test]
+    fn scaffold_log_has_one_record_per_merge() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("scaffold.jsonl");
+        let model = train_with_scaffold_log(&scaffold_corpus(), &log);
+        let (header, records) = read_scaffold_log(&log);
+
+        assert_eq!(header["format"], "smirk-scaffold-log/v1");
+        assert_eq!(records.len(), model.merges.len());
+        for (step, rec) in records.iter().enumerate() {
+            assert_eq!(rec["step"].as_u64().unwrap() as usize, step);
+            let pair = &model.merges[step];
+            assert_eq!(rec["pair"][0].as_u64().unwrap() as u32, pair.0);
+            assert_eq!(rec["pair"][1].as_u64().unwrap() as u32, pair.1);
+            assert!(rec["candidate_freq"].as_u64().unwrap() >= 1);
+        }
+    }
+
+    #[test]
+    fn scaffold_log_records_running_standalone_frequency() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("scaffold.jsonl");
+        train_with_scaffold_log(&scaffold_corpus(), &log);
+        let (_, records) = read_scaffold_log(&log);
+
+        // First merge is (C=4, S=6) -> "CS" (id 9). C occurs 22x and S 10x in
+        // the corpus segmentation; the merge collapses all 10 (C,S) pairs.
+        let first = &records[0];
+        assert_eq!(first["pair"], serde_json::json!([4, 6]));
+        assert_eq!(first["new_id"], 9);
+        assert_eq!(first["new_token"], "CS");
+        assert_eq!(first["candidate_freq"], 10);
+        assert_eq!(
+            first["standalone"],
+            serde_json::json!([[4, 12], [6, 0], [9, 10]])
+        );
+    }
+
+    #[test]
+    fn scaffold_log_handles_a_self_pair_merge() {
+        // (S,S) is the only initial pair; S has id 1, the merged token id 2.
+        let word_counts: HashMap<String, u64> = [("SS", 5), ("SSSS", 3)]
+            .into_iter()
+            .map(|(s, c)| (s.into(), c))
+            .collect();
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("scaffold.jsonl");
+        train_with_scaffold_log(&word_counts, &log);
+        let (_, records) = read_scaffold_log(&log);
+
+        // candidate_freq counts windows: 5*1 + 3*3 = 14. The non-overlapping
+        // merge collapses 5*1 + 3*2 = 11 occurrences, each consuming two S, so
+        // standalone[S] = 5*2 + 3*4 - 2*11 = 0.
+        let first = &records[0];
+        assert_eq!(first["pair"], serde_json::json!([1, 1]));
+        assert_eq!(first["candidate_freq"], 14);
+        assert_eq!(first["standalone"], serde_json::json!([[1, 0], [2, 11]]));
+    }
+
+    #[test]
+    fn no_scaffold_log_without_a_path() {
+        // The default trainer has scaffold_log_path = None: training succeeds
+        // and the instrumentation stays inert.
+        let mut model = GPE::default();
+        assert!(GpeTrainer::default()
+            .do_train(&scaffold_corpus(), &mut model)
+            .is_ok());
     }
 }

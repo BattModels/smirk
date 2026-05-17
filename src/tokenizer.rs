@@ -410,6 +410,9 @@ impl SmirkTokenizer {
                     "split_structure" => {
                         opt_split_structure = value.extract().unwrap();
                     }
+                    "scaffold_log_path" => {
+                        builder.scaffold_log_path(value.extract().unwrap());
+                    }
                     _ => println!("Unknown parameter {:?} ignoring", key),
                 }
             }
