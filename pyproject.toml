@@ -53,4 +53,4 @@ requires = ["maturin~=1.7"]
 
 [tool.maturin]
 python-source = "python"
-include = [ "./python/smirk/vocab_smiles.json", "./python/smirk/vocab_selfies.json" ]
+include = [ "python/smirk/vocab_smiles.json", "python/smirk/vocab_selfies.json" ]
