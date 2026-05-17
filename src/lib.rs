@@ -1,7 +1,9 @@
 mod gpe;
 mod pre_tokenizers;
+mod pua;
 mod shared;
 mod tokenizer;
+mod unigram;
 mod wrapper;
 
 use pyo3::prelude::*;

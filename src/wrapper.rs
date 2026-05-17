@@ -3,6 +3,7 @@ use tokenizers::tokenizer::{Model, PreTokenizedString, PreTokenizer, Result, Tra
 
 use crate::gpe::{GpeTrainer, GPE};
 use crate::pre_tokenizers::SmirkPreTokenizer;
+use crate::unigram::{UnigramModel, UnigramTrainer};
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(untagged)]
@@ -47,6 +48,7 @@ impl From<tokenizers::pre_tokenizers::whitespace::Whitespace> for PreTokenizerWr
 #[derive(Deserialize, Serialize, Clone)]
 pub enum TrainerWrapper {
     GpeTrainer(GpeTrainer),
+    UnigramTrainer(UnigramTrainer),
     TrainerWrapper(tokenizers::models::TrainerWrapper),
 }
 
@@ -56,6 +58,7 @@ impl Trainer for TrainerWrapper {
     fn should_show_progress(&self) -> bool {
         match self {
             Self::GpeTrainer(t) => t.should_show_progress(),
+            Self::UnigramTrainer(t) => t.should_show_progress(),
             Self::TrainerWrapper(t) => t.should_show_progress(),
         }
     }
@@ -65,6 +68,10 @@ impl Trainer for TrainerWrapper {
             Self::GpeTrainer(t) => match model {
                 ModelWrapper::GPE(gpe) => t.train(gpe),
                 _ => Err("GPETrainer can only train GPE models".into()),
+            },
+            Self::UnigramTrainer(t) => match model {
+                ModelWrapper::Unigram(unigram) => t.train(unigram),
+                _ => Err("UnigramTrainer can only train Unigram models".into()),
             },
             Self::TrainerWrapper(t) => match model {
                 ModelWrapper::ModelWrapper(model) => t.train(model),
@@ -81,6 +88,7 @@ impl Trainer for TrainerWrapper {
     {
         match self {
             Self::GpeTrainer(t) => t.feed(iterator, process),
+            Self::UnigramTrainer(t) => t.feed(iterator, process),
             Self::TrainerWrapper(t) => t.feed(iterator, process),
         }
     }
@@ -89,6 +97,12 @@ impl Trainer for TrainerWrapper {
 impl From<GpeTrainer> for TrainerWrapper {
     fn from(value: GpeTrainer) -> Self {
         Self::GpeTrainer(value)
+    }
+}
+
+impl From<UnigramTrainer> for TrainerWrapper {
+    fn from(value: UnigramTrainer) -> Self {
+        Self::UnigramTrainer(value)
     }
 }
 
@@ -102,6 +116,7 @@ impl From<tokenizers::models::TrainerWrapper> for TrainerWrapper {
 #[serde(untagged)]
 pub enum ModelWrapper {
     GPE(GPE),
+    Unigram(UnigramModel),
     ModelWrapper(tokenizers::ModelWrapper),
 }
 
@@ -111,36 +126,42 @@ impl Model for ModelWrapper {
     fn tokenize(&self, sequence: &str) -> Result<Vec<tokenizers::Token>> {
         match self {
             Self::GPE(t) => t.tokenize(sequence),
+            Self::Unigram(t) => t.tokenize(sequence),
             Self::ModelWrapper(t) => t.tokenize(sequence),
         }
     }
     fn get_trainer(&self) -> <Self as Model>::Trainer {
         match self {
             Self::GPE(t) => t.get_trainer().into(),
+            Self::Unigram(t) => t.get_trainer().into(),
             Self::ModelWrapper(t) => t.get_trainer().into(),
         }
     }
     fn id_to_token(&self, id: u32) -> Option<String> {
         match self {
             Self::GPE(t) => t.id_to_token(id),
+            Self::Unigram(t) => t.id_to_token(id),
             Self::ModelWrapper(t) => t.id_to_token(id),
         }
     }
     fn token_to_id(&self, token: &str) -> Option<u32> {
         match self {
             Self::GPE(t) => t.token_to_id(token),
+            Self::Unigram(t) => t.token_to_id(token),
             Self::ModelWrapper(t) => t.token_to_id(token),
         }
     }
     fn get_vocab_size(&self) -> usize {
         match self {
             Self::GPE(t) => t.get_vocab_size(),
+            Self::Unigram(t) => t.get_vocab_size(),
             Self::ModelWrapper(t) => t.get_vocab_size(),
         }
     }
     fn get_vocab(&self) -> std::collections::HashMap<String, u32> {
         match self {
             Self::GPE(t) => t.get_vocab(),
+            Self::Unigram(t) => t.get_vocab(),
             Self::ModelWrapper(t) => t.get_vocab(),
         }
     }
@@ -151,6 +172,7 @@ impl Model for ModelWrapper {
     ) -> Result<Vec<std::path::PathBuf>> {
         match self {
             Self::GPE(t) => t.save(folder, prefix),
+            Self::Unigram(t) => t.save(folder, prefix),
             Self::ModelWrapper(t) => t.save(folder, prefix),
         }
     }
@@ -159,6 +181,11 @@ impl Model for ModelWrapper {
 impl From<GPE> for ModelWrapper {
     fn from(value: GPE) -> Self {
         Self::GPE(value)
+    }
+}
+impl From<UnigramModel> for ModelWrapper {
+    fn from(value: UnigramModel) -> Self {
+        Self::Unigram(value)
     }
 }
 impl From<tokenizers::ModelWrapper> for ModelWrapper {
@@ -189,6 +216,7 @@ mod test {
         );
         check_serde(&model.0.clone());
         check_serde(&model.1.clone());
+        check_serde(&ModelWrapper::Unigram(UnigramModel::default()));
         check_serde(&model);
     }
 

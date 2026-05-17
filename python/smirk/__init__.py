@@ -424,3 +424,43 @@ def train_gpe(
         split_structure=split_structure,
     )
     return SmirkTokenizerFast(tokenizer=tokenizer)
+
+
+def train_unigram(
+    files: list[str],
+    ref: Optional[SmirkTokenizerFast] = None,
+    min_frequency: int = 0,
+    vocab_size: int = 1024,
+    merge_brackets: bool = False,
+    split_structure: bool = True,
+) -> SmirkTokenizerFast:
+    """
+    Train a Smirk Unigram-LM Tokenizer from a corpus of SMILES encodings.
+
+    The sibling of :py:func:`train_gpe`: it shares the same Layer A/B/C
+    pre-tokenization but fits a unigram language model, delegating the
+    EM/pruning loop to HuggingFace's ``UnigramTrainer``. The Unigram
+    hyperparameters (``n_sub_iterations``, ``shrinking_factor``,
+    ``max_piece_length``, ``seed_size``) are fixed in the Rust trainer.
+
+    :param files: List of files containing the corpus to train the tokenizer on
+    :param ref: The initial tokenizer to start from when training. Defaults to
+        `SmirkTokenizerFast()`. This determines the initial alphabet and the
+        identity of the unknown token
+    :param min_frequency: Exposed for parity with :py:func:`train_gpe`; not
+        separately enforced for the Unigram arm, as HuggingFace's
+        ``UnigramTrainer`` has no seed-frequency hook
+    :param vocab_size: The target size of the final vocabulary
+    :param merge_brackets: If true, pieces spanning brackets (`[` or `]`) are allowed
+    :param split_structure: If true, will split SMILES encoding on structural
+        elements before training (i.e. pieces do not span structural elements)
+    """
+    ref = ref or SmirkTokenizerFast()
+    tokenizer = ref._tokenizer.train_unigram(
+        files,
+        min_frequency=min_frequency,
+        vocab_size=vocab_size,
+        merge_brackets=merge_brackets,
+        split_structure=split_structure,
+    )
+    return SmirkTokenizerFast(tokenizer=tokenizer)

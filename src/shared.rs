@@ -12,7 +12,7 @@ use either::Either;
 use std::collections::{HashMap, HashSet};
 use std::slice::Windows;
 
-use crate::gpe::GPE;
+use crate::pre_tokenizers::SmirkPreTokenizer;
 
 type Pair = (u32, u32);
 
@@ -29,6 +29,11 @@ impl Word {
 
     pub fn len(&self) -> usize {
         self.glyphs.len()
+    }
+
+    /// The word's glyph-id sequence.
+    pub fn glyphs(&self) -> &[u32] {
+        &self.glyphs
     }
 
     // Replace a Pair of tokens with a new token (id)
@@ -74,7 +79,7 @@ impl FromIterator<u32> for Word {
 
 /// Compute the initial alphabet and limit it if relevant
 pub fn compute_alphabet(
-    model: &GPE,
+    pretok: &SmirkPreTokenizer,
     wc: &HashMap<String, u64>,
     initial_alphabet: &HashSet<String>,
     limit_alphabet: Option<usize>,
@@ -83,7 +88,7 @@ pub fn compute_alphabet(
 ) {
     let mut alphabet: HashMap<String, usize> = HashMap::new();
     for (word, count) in wc {
-        for glyph in model.tokenize.split(word) {
+        for glyph in pretok.split(word) {
             alphabet
                 .entry(glyph)
                 .and_modify(|c| *c += *count as usize)
@@ -126,7 +131,7 @@ pub fn compute_alphabet(
 /// When `merge_brackets` is false the `[` / `]` glyphs are dropped from the
 /// training stream (Layer C); when true they are retained as merge candidates.
 pub fn tokenize_words(
-    model: &GPE,
+    pretok: &SmirkPreTokenizer,
     wc: &HashMap<String, u64>,
     merge_brackets: bool,
     w2id: &mut HashMap<String, u32>,
@@ -136,7 +141,7 @@ pub fn tokenize_words(
     let mut counts: Vec<i64> = Vec::with_capacity(wc.len());
     for (word, count) in wc {
         counts.push(*count as i64);
-        let token_iter = model.tokenize.split(word).into_iter();
+        let token_iter = pretok.split(word).into_iter();
 
         let iter = if !merge_brackets {
             Either::Left(token_iter.filter(|s| !(s == "[" || s == "]")))
@@ -215,7 +220,7 @@ mod tests {
     /// `train_gpe` path never sets and so the byte-identity test cannot reach.
     #[test]
     fn compute_alphabet_respects_limit() {
-        let model = GPE::default();
+        let pretok = SmirkPreTokenizer::default();
         // Glyph frequencies (count x occurrences per word):
         //   C = 6 + 4 + 1 = 11, O = 3, S = 2, N = 1.
         let wc: HashMap<String, u64> = HashMap::from([
@@ -226,7 +231,7 @@ mod tests {
         let mut w2id: HashMap<String, u32> = HashMap::new();
         let mut id2w: Vec<String> = Vec::new();
 
-        compute_alphabet(&model, &wc, &HashSet::new(), Some(2), &mut w2id, &mut id2w);
+        compute_alphabet(&pretok, &wc, &HashSet::new(), Some(2), &mut w2id, &mut id2w);
 
         // The two rarest glyphs (N, S) are dropped; survivors are id-ordered
         // by glyph string.

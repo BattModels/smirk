@@ -172,7 +172,7 @@ impl GpeTrainer {
         let mut id_to_word: Vec<String> = Vec::with_capacity(self.vocab_size);
         self.add_special_tokens(&model, &mut word_to_id, &mut id_to_word);
         compute_alphabet(
-            model,
+            &model.tokenize,
             word_counts,
             &self.alphabet,
             self.limit_alphabet,
@@ -185,7 +185,7 @@ impl GpeTrainer {
 
         // Tokenize words, returning word_counts => (Vec, Vec)
         let (words, counts) = tokenize_words(
-            model,
+            &model.tokenize,
             word_counts,
             self.merge_brackets,
             &mut word_to_id,

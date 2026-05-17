@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::gpe::{GpeTrainer, GPE};
 use crate::pre_tokenizers::{split_structure, SmirkPreTokenizer};
+use crate::unigram::{UnigramModel, UnigramTrainer};
 use crate::wrapper::{ModelWrapper, PreTokenizerWrapper, TrainerWrapper};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -366,6 +367,7 @@ impl SmirkTokenizer {
                 _ => Err(()),
             },
             ModelWrapper::GPE(gpe) => Ok(gpe.to_owned()),
+            ModelWrapper::Unigram(_) => Err(()),
         }
         .unwrap()
         .into();
@@ -414,6 +416,85 @@ impl SmirkTokenizer {
         }
 
         // Build the Smirk-GPE tokenizer
+        let mut tok_builder = TokenizerBuilder::default()
+            .with_normalizer(self.tokenizer.get_normalizer().cloned())
+            .with_model(model)
+            .with_decoder(self.tokenizer.get_decoder().cloned());
+
+        if opt_split_structure {
+            tok_builder = tok_builder.with_pre_tokenizer(Some(split_structure().into()));
+        } else {
+            tok_builder = tok_builder.with_pre_tokenizer(None);
+        }
+        let mut tokenizer: TokenizerImpl<
+            ModelWrapper,
+            NormalizerWrapper,
+            PreTokenizerWrapper,
+            PostProcessorWrapper,
+            DecoderWrapper,
+        > = tok_builder.build().unwrap();
+
+        // Train tokenizer
+        let mut trainer: TrainerWrapper = builder.build().unwrap().into();
+        let _ = py.allow_threads(|| tokenizer.train_from_files(&mut trainer, files).unwrap());
+        Ok(SmirkTokenizer::new(tokenizer))
+    }
+
+    #[pyo3(signature = (files, **kwargs))]
+    fn train_unigram(
+        &self,
+        py: Python,
+        files: Vec<String>,
+        kwargs: Option<Bound<'_, PyDict>>,
+    ) -> PyResult<Self> {
+        // The Unigram model trains from scratch — it carries only the Layer-A
+        // pre-tokenizer; the base alphabet is supplied to the trainer.
+        let model: ModelWrapper = UnigramModel::default().into();
+
+        // Remove any special tokens (i.e. [PAD]) from the initial vocab
+        let is_special = Regex::new(r"\[[A-Z]+?\]").unwrap();
+        let alphabet: HashSet<String> = self
+            .tokenizer
+            .get_vocab(false)
+            .keys()
+            .filter_map(|g| {
+                if is_special.is_match(g) {
+                    None
+                } else {
+                    Some(g.into())
+                }
+            })
+            .collect();
+
+        // Configure the trainer
+        let mut builder = UnigramTrainer::builder();
+        let mut opt_split_structure = false;
+        builder.alphabet(alphabet);
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                let key: &str = key.extract().unwrap();
+                match key {
+                    "min_frequency" => {
+                        builder.min_frequency(value.extract().unwrap());
+                    }
+                    "vocab_size" => {
+                        builder.vocab_size(value.extract().unwrap());
+                    }
+                    "limit_alphabet" => {
+                        builder.limit_alphabet(value.extract().unwrap());
+                    }
+                    "merge_brackets" => {
+                        builder.merge_brackets(value.extract().unwrap());
+                    }
+                    "split_structure" => {
+                        opt_split_structure = value.extract().unwrap();
+                    }
+                    _ => println!("Unknown parameter {:?} ignoring", key),
+                }
+            }
+        }
+
+        // Build the Smirk-Unigram tokenizer
         let mut tok_builder = TokenizerBuilder::default()
             .with_normalizer(self.tokenizer.get_normalizer().cloned())
             .with_model(model)
