@@ -441,15 +441,15 @@ def train_unigram(
     split_structure: bool = True,
     seed_size: int = 1_000_000,
     max_piece_length: int = 128,
+    n_sub_iterations: int = 2,
+    shrinking_factor: float = 0.75,
 ) -> SmirkTokenizerFast:
     """
     Train a Smirk Unigram-LM Tokenizer from a corpus of SMILES encodings.
 
     The sibling of :py:func:`train_gpe`: it shares the same Layer A/B/C
     pre-tokenization but fits a unigram language model, delegating the
-    EM/pruning loop to HuggingFace's ``UnigramTrainer``. The remaining Unigram
-    hyperparameters (``n_sub_iterations``, ``shrinking_factor``) are fixed in
-    the Rust trainer.
+    EM/pruning loop to HuggingFace's ``UnigramTrainer``.
 
     :param files: List of files containing the corpus to train the tokenizer on
     :param ref: The initial tokenizer to start from when training. Defaults to
@@ -466,6 +466,13 @@ def train_unigram(
         (1_000_000) is the preregistered value; expose it to vary the seed cap
     :param max_piece_length: Maximum piece length in glyphs. The default (128)
         is the preregistered value
+    :param n_sub_iterations: EM sub-iterations per prune round in HuggingFace's
+        ``UnigramTrainer``. The default (2) is the preregistered value; expose
+        it for the Phase-2.5 prune-schedule spot-check
+    :param shrinking_factor: Fraction of pieces kept per prune round in
+        HuggingFace's ``UnigramTrainer``. The default (0.75) is the
+        preregistered value; expose it for the Phase-2.5 prune-schedule
+        spot-check
     """
     ref = ref or SmirkTokenizerFast()
     tokenizer = ref._tokenizer.train_unigram(
@@ -476,5 +483,7 @@ def train_unigram(
         split_structure=split_structure,
         seed_size=seed_size,
         max_piece_length=max_piece_length,
+        n_sub_iterations=n_sub_iterations,
+        shrinking_factor=shrinking_factor,
     )
     return SmirkTokenizerFast(tokenizer=tokenizer)

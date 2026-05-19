@@ -498,6 +498,12 @@ impl SmirkTokenizer {
                     "max_piece_length" => {
                         builder.max_piece_length(value.extract().unwrap());
                     }
+                    "n_sub_iterations" => {
+                        builder.n_sub_iterations(value.extract().unwrap());
+                    }
+                    "shrinking_factor" => {
+                        builder.shrinking_factor(value.extract().unwrap());
+                    }
                     _ => println!("Unknown parameter {:?} ignoring", key),
                 }
             }

@@ -10,12 +10,11 @@ use super::model::{UnigramModel, UnigramPiece};
 use crate::pua;
 use crate::shared::{compute_alphabet, tokenize_words};
 
-// §3.2 Unigram-LM hyperparameters frozen by the preregistration. `seed_size`
-// and `max_piece_length` are also §3.2-frozen but their values are the
-// `UnigramTrainer` field defaults below — exposed as knobs so Phase-2 probes
-// (the seed-cap spot-check, the max-piece-length contingency) can vary them.
-const N_SUB_ITERATIONS: u32 = 2;
-const SHRINKING_FACTOR: f64 = 0.75;
+// §3.2 Unigram-LM hyperparameters frozen by the preregistration. All four
+// (`seed_size`, `max_piece_length`, `n_sub_iterations`, `shrinking_factor`)
+// are §3.2-frozen but exposed as `UnigramTrainer` field defaults below so the
+// Phase-2 probes (seed-cap spot-check, prune-schedule spot-check,
+// max-piece-length contingency) can vary them.
 
 /// Unigram-LM sibling trainer — the Unigram arm's analogue of `GpeTrainer`.
 ///
@@ -48,6 +47,14 @@ pub struct UnigramTrainer {
     /// Maximum piece length, in glyphs. §3.2 freezes this at the default
     /// (128); exposed as a knob for the Phase-2 max-piece-length contingency.
     pub max_piece_length: usize,
+    /// HuggingFace `UnigramTrainer` EM sub-iterations per prune round. §3.2
+    /// freezes this at the default (2); exposed as a knob for the Phase-2.5
+    /// prune-schedule spot-check.
+    pub n_sub_iterations: u32,
+    /// HuggingFace `UnigramTrainer` shrinking factor (fraction of pieces kept
+    /// per prune round). §3.2 freezes this at the default (0.75); exposed as
+    /// a knob for the Phase-2.5 prune-schedule spot-check.
+    pub shrinking_factor: f64,
     /// Internal corpus word-count map, populated by `feed`.
     word_counts: HashMap<String, u64>,
 }
@@ -63,6 +70,8 @@ impl Default for UnigramTrainer {
             merge_brackets: false,
             seed_size: 1_000_000,
             max_piece_length: 128,
+            n_sub_iterations: 2,
+            shrinking_factor: 0.75,
             word_counts: HashMap::new(),
         }
     }
@@ -134,8 +143,8 @@ impl UnigramTrainer {
         let hf_trainer = HfUnigramTrainer::builder()
             .show_progress(false)
             .vocab_size(hf_vocab_size)
-            .n_sub_iterations(N_SUB_ITERATIONS)
-            .shrinking_factor(SHRINKING_FACTOR)
+            .n_sub_iterations(self.n_sub_iterations)
+            .shrinking_factor(self.shrinking_factor)
             .max_piece_length(self.max_piece_length)
             .seed_size(self.seed_size)
             .build()
@@ -341,6 +350,27 @@ mod tests {
         trainer_with(32, 128)
             .do_train(&word_counts(), &mut model)
             .unwrap();
+        for glyph in ["C", "O", "S", "N"] {
+            assert!(model.token_to_id(glyph).is_some());
+        }
+    }
+
+    #[test]
+    fn a_custom_prune_schedule_still_trains() {
+        // The n_sub_iterations / shrinking_factor knobs reach HuggingFace's
+        // builder and the trainer produces a usable model with the coarsened
+        // §3.2 spot-check schedule.
+        let alphabet: HashSet<String> =
+            ["C", "O", "S", "N"].into_iter().map(String::from).collect();
+        let trainer = UnigramTrainer {
+            vocab_size: 64,
+            alphabet,
+            n_sub_iterations: 3,
+            shrinking_factor: 0.9,
+            ..Default::default()
+        };
+        let mut model = empty_model();
+        trainer.do_train(&word_counts(), &mut model).unwrap();
         for glyph in ["C", "O", "S", "N"] {
             assert!(model.token_to_id(glyph).is_some());
         }

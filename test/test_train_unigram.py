@@ -98,3 +98,16 @@ def test_seed_size_knob_is_accepted():
     # spot-check). A reduced cap still trains a vocabulary past the baseline.
     tok = smirk.train_unigram([str(SMILE_TEST_FILE)], vocab_size=256, seed_size=2048)
     assert tok.vocab_size > smirk.SmirkTokenizerFast().vocab_size
+
+
+def test_prune_schedule_knobs_are_accepted():
+    # main.tex §3.2: n_sub_iterations and shrinking_factor are settable knobs
+    # (the Phase-2.5 prune-schedule spot-check). The coarsened schedule
+    # (shrinking_factor=0.9, more rounds) still trains a usable vocabulary.
+    tok = smirk.train_unigram(
+        [str(SMILE_TEST_FILE)],
+        vocab_size=256,
+        n_sub_iterations=3,
+        shrinking_factor=0.9,
+    )
+    assert tok.vocab_size > smirk.SmirkTokenizerFast().vocab_size
