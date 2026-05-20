@@ -6,6 +6,14 @@ use tokenizers::SplitDelimiterBehavior;
 
 pub use smirk::SmirkPreTokenizer;
 
+/// Shared Layer-B chunker (§3.2 of the vocab-tokenizer-clms preregistration).
+///
+/// Runs once over the SMILES to isolate structural delimiters — ring-closure
+/// digits (`1`–`9` and `%NN`), branches (`(`, `)`), dot disconnects (`.`),
+/// directional bonds (`/`, `\`), and bracketed atoms (`[...]`) — without
+/// touching the chemical alphabet. Both trainers feed on the resulting
+/// chunks; both `merge_brackets` modes share this regex (only the
+/// downstream trainer reads / ignores the chunk boundaries).
 pub fn split_structure() -> Split {
     let pattern = SplitPattern::Regex(r"\.|%\d{2}|[\(\)]|[/\\]|\[.*?]|\d".to_owned());
     Split::new(pattern, SplitDelimiterBehavior::Isolated, false).unwrap()

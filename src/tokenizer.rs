@@ -105,6 +105,30 @@ impl SmirkTokenizer {
         Ok(splits)
     }
 
+    /// Apply the shared Layer-B chunker (the `split_structure` regex) to a
+    /// SMILES string and return the chunks with their character-offset spans.
+    ///
+    /// Read-only: independent of the tokenizer's trained model, of the
+    /// `merge_brackets` axis, and of any merges. Both BPE and Unigram cells
+    /// share this chunker, so two cells at matched `(corpus, V, boundary)`
+    /// see byte-identical chunks for the same SMILES — that is the
+    /// preregistered §3.2 "Layer B remains well-defined under MB" invariant.
+    ///
+    /// Offsets are character-based to align with `encode` /
+    /// `encode_batch` (which use `encode_char_offsets`).
+    fn pretokenize_layer_b(&self, smile: String) -> PyResult<Vec<(String, (u64, u64))>> {
+        let mut pretokenized = PreTokenizedString::from(smile);
+        crate::pre_tokenizers::split_structure()
+            .pre_tokenize(&mut pretokenized)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let chunks = pretokenized
+            .get_splits(OffsetReferential::Original, OffsetType::Char)
+            .into_iter()
+            .map(|(s, (start, end), _)| (s.to_string(), (start as u64, end as u64)))
+            .collect::<Vec<(String, (u64, u64))>>();
+        Ok(chunks)
+    }
+
     #[pyo3(signature = (smile, add_special_tokens = true))]
     fn encode(&self, smile: String, add_special_tokens: bool) -> PyResult<Encoding> {
         let input = EncodeInput::from(smile);

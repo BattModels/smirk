@@ -312,6 +312,24 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         """Converts a string into a sequence of tokens"""
         return self._tokenizer.tokenize(text, add_special_tokens)
 
+    def pretokenize_layer_b(
+        self, smiles: str
+    ) -> list[tuple[str, tuple[int, int]]]:
+        """Return the SMILES split into Layer-B chunks with character offsets.
+
+        Layer B is the shared structural chunker (§3.2 of the
+        vocab-tokenizer-clms preregistration): it isolates structural
+        delimiters (ring-closure digits, branches, dot disconnects, directional
+        bonds, bracketed atoms) without touching the chemical alphabet.
+
+        The chunker is read-only and independent of any trained model, of the
+        ``merge_brackets`` axis, and of any merges — two cells at matched
+        ``(corpus, V, boundary)`` see byte-identical chunks for the same
+        SMILES. Offsets are character-based to align with ``__call__(...,
+        return_offsets_mapping=True)``.
+        """
+        return self._tokenizer.pretokenize_layer_b(smiles)
+
     @property
     def post_processor(self):
         """
