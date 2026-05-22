@@ -1,0 +1,860 @@
+use super::split_bigsmiles::{MATCH_INNER_BIGSMILES, MATCH_OUTER_BIGSMILES};
+use once_cell::sync::Lazy;
+use regex::{Match, Regex};
+use serde::de::Visitor;
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fmt;
+use tokenizers::tokenizer::pattern::Pattern;
+use tokenizers::tokenizer::{
+    Offsets, PreTokenizedString, PreTokenizer, Result, SplitDelimiterBehavior,
+};
+
+#[derive(Clone)]
+pub struct BigSmirkPreTokenizer {
+    outer: Regex,
+    inner: Regex,
+    inner_partial: Regex,
+}
+
+impl BigSmirkPreTokenizer {
+    pub const BIGSMILES_VERSION: &'static str = "1.1";
+
+    pub fn new(outer: &str, inner: &str) -> Self {
+        Self {
+            outer: Regex::new(&outer).unwrap(),
+            inner: Regex::new(&inner).unwrap(),
+            inner_partial: Regex::new(partial_inner_pattern(inner)).unwrap(),
+        }
+    }
+
+    pub fn split(&self, text: &String) -> Vec<String> {
+        self.find_matches(text)
+            .unwrap()
+            .into_iter()
+            .map(|(offset, _)| text.get(offset.0..offset.1).unwrap().to_owned())
+            .filter(|tok| !tok.is_empty())
+            .collect()
+    }
+}
+
+impl Default for BigSmirkPreTokenizer {
+    fn default() -> Self {
+        BigSmirkPreTokenizer::new(MATCH_OUTER_BIGSMILES, MATCH_INNER_BIGSMILES)
+    }
+}
+
+impl PartialEq for BigSmirkPreTokenizer {
+    fn eq(&self, other: &Self) -> bool {
+        self.outer.as_str() == other.outer.as_str() && self.inner.as_str() == other.inner.as_str()
+    }
+}
+
+impl fmt::Debug for BigSmirkPreTokenizer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BigSmirkPreTokenizer")
+            .field("outer", &format_args!("'{}'", &self.outer.as_str()))
+            .field("inner", &format_args!("'{}'", &self.inner.as_str()))
+            .finish()
+    }
+}
+
+impl Serialize for BigSmirkPreTokenizer {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("BigSmirkPreTokenizer", 4)?;
+        state.serialize_field("type", "BigSmirkPreTokenizer")?;
+        state.serialize_field("bigsmiles_version", Self::BIGSMILES_VERSION)?;
+        state.serialize_field("outer", self.outer.as_str())?;
+        state.serialize_field("inner", self.inner.as_str())?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for BigSmirkPreTokenizer {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_struct(
+            "BigSmirkPreTokenizer",
+            &["type", "bigsmiles_version", "outer", "inner"],
+            BigSmirkPreTokenizerVisitor,
+        )
+    }
+}
+
+struct BigSmirkPreTokenizerVisitor;
+impl<'de> Visitor<'de> for BigSmirkPreTokenizerVisitor {
+    type Value = BigSmirkPreTokenizer;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(formatter, "struct BigSmirkPreTokenizer with type field")
+    }
+
+    fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut outer: Option<String> = None;
+        let mut inner: Option<String> = None;
+        let mut type_field: Option<String> = None;
+        let mut bigsmiles_version: Option<String> = None;
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_ref() {
+                "type" => {
+                    type_field = Some(map.next_value()?);
+                }
+                "bigsmiles_version" => {
+                    bigsmiles_version = Some(map.next_value()?);
+                }
+                "outer" => {
+                    if let Some(x) = map.next_value()? {
+                        outer = Some(x);
+                    }
+                }
+                "inner" => {
+                    if let Some(x) = map.next_value()? {
+                        inner = Some(x);
+                    }
+                }
+                _ => {
+                    let _: serde::de::IgnoredAny = map.next_value()?;
+                }
+            }
+        }
+        match type_field.as_deref() {
+            Some("BigSmirkPreTokenizer") => {}
+            _ => {
+                return Err(serde::de::Error::custom(
+                    "Missing or invalid type field for BigSmirkPreTokenizer",
+                ));
+            }
+        }
+        match bigsmiles_version.as_deref() {
+            Some(BigSmirkPreTokenizer::BIGSMILES_VERSION) => {}
+            Some(version) => {
+                return Err(serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(version),
+                    &"BigSMILES version `1.1`",
+                ));
+            }
+            None => {
+                return Err(serde::de::Error::missing_field("bigsmiles_version"));
+            }
+        }
+        Ok(BigSmirkPreTokenizer::new(
+            outer.expect("Missing `outer`").as_str(),
+            inner.expect("Missing `inner`").as_str(),
+        ))
+    }
+}
+
+impl PreTokenizer for BigSmirkPreTokenizer {
+    fn pre_tokenize(&self, pretokenized: &mut PreTokenizedString) -> Result<()> {
+        pretokenized.normalize(|normalized| {
+            if let Some(expanded) = expand_fragment_definitions(normalized.get()) {
+                static MATCH_FULL_STRING: Lazy<Regex> =
+                    Lazy::new(|| Regex::new(r"(?s)^.*$").unwrap());
+                normalized.replace(&*MATCH_FULL_STRING, &expanded)?;
+            }
+            Ok(())
+        })?;
+        pretokenized.split(|_, s| s.split(self.to_owned(), SplitDelimiterBehavior::Isolated))
+    }
+}
+
+fn expand_fragment_definitions(input: &str) -> Option<String> {
+    let (main, definitions) = split_fragment_definitions(input)?;
+    let mut expanded = main.to_string();
+
+    for _ in 0..=definitions.len() {
+        let (next, changed) = expand_fragment_references_once(&expanded, &definitions);
+        expanded = next;
+        if !changed {
+            break;
+        }
+    }
+
+    Some(expanded)
+}
+
+fn split_fragment_definitions(input: &str) -> Option<(&str, HashMap<String, String>)> {
+    for (start, _) in input.match_indices(".{#") {
+        if let Some(definitions) = parse_fragment_definition_suffix(&input[start..]) {
+            return Some((&input[..start], definitions));
+        }
+    }
+    None
+}
+
+fn parse_fragment_definition_suffix(suffix: &str) -> Option<HashMap<String, String>> {
+    let mut definitions = HashMap::new();
+    let mut pos = 0;
+
+    while pos < suffix.len() {
+        if !suffix[pos..].starts_with(".{#") {
+            return None;
+        }
+        pos += ".{#".len();
+
+        let name_start = pos;
+        while pos < suffix.len() {
+            let c = suffix[pos..].chars().next().unwrap();
+            if c == '=' {
+                break;
+            }
+            pos += c.len_utf8();
+        }
+        let name = &suffix[name_start..pos];
+        if name.is_empty() || !is_fragment_definition_name(name) {
+            return None;
+        }
+        if !suffix[pos..].starts_with('=') {
+            return None;
+        }
+        pos += '='.len_utf8();
+
+        let value_start = pos;
+        let mut depth = 1;
+        while pos < suffix.len() {
+            let c = suffix[pos..].chars().next().unwrap();
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        definitions.insert(name.to_string(), suffix[value_start..pos].to_string());
+                        pos += c.len_utf8();
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            pos += c.len_utf8();
+        }
+
+        if depth != 0 {
+            return None;
+        }
+    }
+
+    Some(definitions)
+}
+
+fn is_fragment_definition_name(name: &str) -> bool {
+    name.chars()
+        .all(|c| matches!(c, '!'..='~') && !matches!(c, '=' | '{' | '}' | '[' | ']'))
+}
+
+fn expand_fragment_references_once(
+    input: &str,
+    definitions: &HashMap<String, String>,
+) -> (String, bool) {
+    let mut expanded = String::with_capacity(input.len());
+    let mut changed = false;
+    let mut pos = 0;
+
+    while pos < input.len() {
+        let rest = &input[pos..];
+        if let Some((name, len)) = bracketed_fragment_reference(rest) {
+            if let Some(replacement) = definitions.get(name) {
+                expanded.push_str(replacement);
+                pos += len;
+                changed = true;
+                continue;
+            }
+        }
+
+        let c = rest.chars().next().unwrap();
+        expanded.push(c);
+        pos += c.len_utf8();
+    }
+
+    (expanded, changed)
+}
+
+fn bracketed_fragment_reference(input: &str) -> Option<(&str, usize)> {
+    if !input.starts_with("[#") {
+        return None;
+    }
+
+    let end = input.find(']')?;
+    let name = &input[2..end];
+    if name.is_empty() {
+        return None;
+    }
+    Some((name, end + ']'.len_utf8()))
+}
+
+fn append_split(splits: &mut Vec<(Offsets, bool)>, prev: &mut usize, m: Match, offset: usize) {
+    let start = m.start() + offset;
+    let end = m.end() + offset;
+    if *prev != start {
+        splits.push(((*prev, start), false));
+    }
+    splits.push(((start, end), true));
+    *prev = end;
+}
+
+fn partial_inner_pattern(inner: &str) -> &str {
+    let pattern = inner
+        .strip_prefix("^(?:")
+        .and_then(|pattern| pattern.strip_suffix(")$"))
+        .unwrap_or(inner);
+    pattern.strip_prefix('|').unwrap_or(pattern)
+}
+
+impl Pattern for BigSmirkPreTokenizer {
+    fn find_matches(&self, inside: &str) -> Result<Vec<(Offsets, bool)>> {
+        let mut splits = Vec::with_capacity(inside.len());
+        let mut prev = 0;
+        static IS_NUMBER: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\d+$").unwrap());
+        static IS_BONDING_DESC: Lazy<Regex> = Lazy::new(|| Regex::new(r"^[\$<>]$").unwrap());
+        for m_outer in self.outer.find_iter(inside) {
+            // Check for Brackets
+            if m_outer.as_str().starts_with("[") {
+                // Record opening [
+                splits.push(((m_outer.start(), m_outer.start() + 1), true));
+                prev = m_outer.start() + 1;
+
+                // Record contents between brackets
+                let bracketed = &inside[(m_outer.start() + 1)..(m_outer.end() - 1)];
+
+                // Try to match with inner pattern
+                if let Some(capture) = self
+                    .inner
+                    .captures(bracketed)
+                    .or_else(|| self.inner_partial.captures(bracketed))
+                {
+                    // Unpack bracketed atoms
+                    for i in 1..capture.len() {
+                        if let Some(m) = capture.get(i) {
+                            let matched_str = m.as_str();
+                            if matched_str.is_empty() {
+                                continue;
+                            }
+                            if IS_NUMBER.is_match(matched_str) {
+                                // Tokenize numbers as digits
+                                for d in m.range() {
+                                    let s = d + m_outer.start() + 1;
+                                    splits.push(((s, s + 1), true));
+                                    prev = s + 1;
+                                }
+                            } else if IS_BONDING_DESC.is_match(matched_str) {
+                                // Bonding descriptor ($, <, >) - keep as single token
+                                append_split(&mut splits, &mut prev, m, m_outer.start() + 1)
+                            } else {
+                                append_split(&mut splits, &mut prev, m, m_outer.start() + 1)
+                            }
+                        }
+                    }
+                }
+
+                // Check for trailing unmatched characters within the brackets
+                if prev != (m_outer.end() - 1) {
+                    splits.push(((prev, m_outer.end() - 1), false));
+                    prev = m_outer.end() - 1;
+                }
+
+                // Record closing ]
+                assert!(m_outer.as_str().ends_with("]"));
+                splits.push(((prev, m_outer.end()), true));
+                prev = m_outer.end();
+            } else {
+                append_split(&mut splits, &mut prev, m_outer, 0);
+            }
+        }
+        if prev != inside.len() {
+            splits.push(((prev, inside.len()), false));
+        }
+        Ok(splits)
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use super::*;
+    use crate::test_utils::check_serde;
+    use tokenizers::tokenizer::{OffsetReferential, OffsetType};
+
+    #[test]
+    fn serialize_default() {
+        let default = BigSmirkPreTokenizer::default();
+        check_serde(&default);
+    }
+
+    #[test]
+    fn serializes_bigsmiles_version() {
+        let value = serde_json::to_value(BigSmirkPreTokenizer::default()).unwrap();
+        assert_eq!(
+            value.get("bigsmiles_version").and_then(|v| v.as_str()),
+            Some(BigSmirkPreTokenizer::BIGSMILES_VERSION)
+        );
+    }
+
+    #[test]
+    fn rejects_missing_bigsmiles_version() {
+        let mut value = serde_json::to_value(BigSmirkPreTokenizer::default()).unwrap();
+        value.as_object_mut().unwrap().remove("bigsmiles_version");
+
+        let err = serde_json::from_value::<BigSmirkPreTokenizer>(value).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("missing field `bigsmiles_version`"));
+    }
+
+    #[test]
+    fn rejects_unsupported_bigsmiles_versions() {
+        for version in ["1.0", "1.2", "2.0", "not-a-version"] {
+            let mut value = serde_json::to_value(BigSmirkPreTokenizer::default()).unwrap();
+            value["bigsmiles_version"] = serde_json::Value::String(version.to_string());
+
+            let err = serde_json::from_value::<BigSmirkPreTokenizer>(value).unwrap_err();
+            let message = err.to_string();
+            assert!(message.contains(&format!("invalid value: string \"{}\"", version)));
+            assert!(message.contains("expected BigSMILES version `1.1`"));
+        }
+    }
+
+    #[test]
+    fn serialize_pretok() {
+        let pretok = BigSmirkPreTokenizer::new(r".|\[.*?]", ".");
+        check_serde(&pretok);
+    }
+
+    fn all_matches(tok: &BigSmirkPreTokenizer, bigsmiles: &str) -> bool {
+        let splits = tok.find_matches(bigsmiles).unwrap();
+        splits.into_iter().all(|(_s, m)| m)
+    }
+
+    fn all_matches_after_fragment_expansion(tok: &BigSmirkPreTokenizer, bigsmiles: &str) -> bool {
+        let expanded = expand_fragment_definitions(bigsmiles).unwrap_or_else(|| bigsmiles.into());
+        all_matches(tok, &expanded)
+    }
+
+    fn get_matched_pretokens(tok: &BigSmirkPreTokenizer, bigsmiles: &str) -> Vec<String> {
+        tok.find_matches(bigsmiles)
+            .unwrap()
+            .into_iter()
+            .filter(|(_, m)| *m)
+            .map(|(o, _)| bigsmiles[o.0..o.1].into())
+            .collect()
+    }
+
+    fn get_split_tokens(tok: &BigSmirkPreTokenizer, bigsmiles: &str) -> Vec<String> {
+        let mut bigsmiles = PreTokenizedString::from(bigsmiles);
+        tok.pre_tokenize(&mut bigsmiles).unwrap();
+        bigsmiles
+            .get_splits(OffsetReferential::Original, OffsetType::Byte)
+            .into_iter()
+            .map(|(s, _, _)| s.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn check_bigsmiles_splits() {
+        let pretok = BigSmirkPreTokenizer::default();
+        let bigsmiles = "{[$]CC[$]}".to_string();
+        let split = ["{", "[", "$", "]", "C", "C", "[", "$", "]", "}"];
+        assert_eq!(get_split_tokens(&pretok, bigsmiles.as_str()), split);
+        assert_eq!(pretok.split(&bigsmiles), split);
+    }
+
+    #[test]
+    fn check_unknown() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(get_split_tokens(&pretok, "C🤷"), ["C", "🤷"]);
+        assert_eq!(get_split_tokens(&pretok, "🤷"), ["🤷"]);
+        assert_eq!(get_split_tokens(&pretok, "🤷C"), ["🤷", "C"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "C[H🤷]"),
+            ["C", "[", "H", "🤷", "]"]
+        );
+        assert_eq!(get_split_tokens(&pretok, "[🤷]"), ["[", "🤷", "]"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "[🤷H]C"),
+            ["[", "🤷", "H", "]", "C"]
+        );
+    }
+
+    #[test]
+    fn test_standard_smiles_basic() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "OC[C@@H]"),
+            ["O", "C", "[", "C", "@@", "H", "]"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "OC[C@@H][OH]"),
+            ["O", "C", "[", "C", "@@", "H", "]", "[", "O", "H", "]"]
+        );
+    }
+
+    #[test]
+    fn test_standard_smiles_chirality() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(get_split_tokens(&pretok, "[C@]"), ["[", "C", "@", "]"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "[C@H]"),
+            ["[", "C", "@", "H", "]"]
+        );
+        assert_eq!(get_split_tokens(&pretok, "[C@@]"), ["[", "C", "@@", "]"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "[Fe@TB3+3]"),
+            ["[", "Fe", "@TB", "3", "+", "3", "]"]
+        );
+    }
+
+    #[test]
+    fn test_standard_smiles_isotopes_charges() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "[16C]"),
+            ["[", "1", "6", "C", "]"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "[C+12]"),
+            ["[", "C", "+", "1", "2", "]"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "[CH4:200]"),
+            ["[", "C", "H", "4", ":", "2", "0", "0", "]"]
+        );
+    }
+
+    #[test]
+    fn test_standard_smiles_rings_bonds() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "C1CCCC2C1CCCC2"),
+            ["C", "1", "C", "C", "C", "C", "2", "C", "1", "C", "C", "C", "C", "2"]
+        );
+        assert_eq!(get_split_tokens(&pretok, "C%12"), ["C", "%", "1", "2"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "F/C=C/F"),
+            ["F", "/", "C", "=", "C", "/", "F"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, r"F/C=C\F"),
+            ["F", "/", "C", "=", "C", "\\", "F"]
+        );
+    }
+
+    #[test]
+    fn test_standard_smiles_complex() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "[Na+].[Cl-]"),
+            ["[", "Na", "+", "]", ".", "[", "Cl", "-", "]"]
+        );
+        assert_eq!(get_split_tokens(&pretok, "CC-O"), ["C", "C", "-", "O"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "O=C=O"),
+            ["O", "=", "C", "=", "O"]
+        );
+        assert_eq!(get_split_tokens(&pretok, "C#N"), ["C", "#", "N"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "c1ccccc1"),
+            ["c", "1", "c", "c", "c", "c", "c", "1"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "FC(Br)(Cl)F"),
+            ["F", "C", "(", "Br", ")", "(", "Cl", ")", "F"]
+        );
+        assert!(all_matches(
+            &pretok,
+            "OC[C@@H](O1)[C@@H](O)[C@H](O)[C@@H](O)[C@H](O)1"
+        ));
+    }
+
+    #[test]
+    fn test_stochastic_object_simple() {
+        let pretok = BigSmirkPreTokenizer::default();
+        // Simple polymer repeat unit with AA-type bonding
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$]CC[$]}"),
+            ["{", "[", "$", "]", "C", "C", "[", "$", "]", "}"]
+        );
+    }
+
+    #[test]
+    fn test_stochastic_object_multiple_units() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$]CC[$],[$]C(C)C[$]}"),
+            [
+                "{", "[", "$", "]", "C", "C", "[", "$", "]", ",", "[", "$", "]", "C", "(", "C",
+                ")", "C", "[", "$", "]", "}"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ab_type_descriptors() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "{[<]CC[>]}"),
+            ["{", "[", "<", "]", "C", "C", "[", ">", "]", "}"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "{[>]CCCCCC(=O)[<],[>]NCCCCCCN[<]}"),
+            [
+                "{", "[", ">", "]", "C", "C", "C", "C", "C", "C", "(", "=", "O", ")", "[", "<",
+                "]", ",", "[", ">", "]", "N", "C", "C", "C", "C", "C", "C", "N", "[", "<", "]",
+                "}"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_indexed_bonding_descriptors() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(get_split_tokens(&pretok, "[$1]"), ["[", "$", "1", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[$2]"), ["[", "$", "2", "]"]);
+
+        assert_eq!(get_split_tokens(&pretok, "[<1]"), ["[", "<", "1", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[>1]"), ["[", ">", "1", "]"]);
+
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$1]CC[$1],[$2]C(C)C[$2]}"),
+            [
+                "{", "[", "$", "1", "]", "C", "C", "[", "$", "1", "]", ",", "[", "$", "2", "]",
+                "C", "(", "C", ")", "C", "[", "$", "2", "]", "}"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_ladder_descriptors() {
+        let pretok = BigSmirkPreTokenizer::default();
+
+        assert_eq!(
+            get_split_tokens(&pretok, "[<1[<1]1]"),
+            ["[", "<", "1", "[", "<", "1", "]", "1", "]"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "[$1[$2]3]"),
+            ["[", "$", "1", "[", "$", "2", "]", "3", "]"]
+        );
+
+        assert_eq!(
+            get_split_tokens(&pretok, "{[<1[<1]1]CC[>1[>1]1]}"),
+            [
+                "{", "[", "<", "1", "[", "<", "1", "]", "1", "]", "C", "C", "[", ">", "1", "[",
+                ">", "1", "]", "1", "]", "}"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_external_bond_order_with_descriptors() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "C=[$2]"),
+            ["C", "=", "[", "$", "2", "]"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, r"C/[>1]"),
+            ["C", "/", "[", ">", "1", "]"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, r"C\[<1]"),
+            ["C", "\\", "[", "<", "1", "]"]
+        );
+    }
+
+    #[test]
+    fn test_empty_terminal() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(get_split_tokens(&pretok, "[]"), ["[", "]"]);
+
+        assert_eq!(
+            get_split_tokens(&pretok, "{[]CC[$]}"),
+            ["{", "[", "]", "C", "C", "[", "$", "]", "}"]
+        );
+
+        assert_eq!(
+            get_split_tokens(&pretok, "{[]CC[]}"),
+            ["{", "[", "]", "C", "C", "[", "]", "}"]
+        );
+    }
+
+    #[test]
+    fn test_end_groups_semicolon() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$]CC[$];[H][$],[$]O}"),
+            [
+                "{", "[", "$", "]", "C", "C", "[", "$", "]", ";", "[", "H", "]", "[", "$", "]",
+                ",", "[", "$", "]", "O", "}"
+            ]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$]CC[$];C[$],[$]C}"),
+            [
+                "{", "[", "$", "]", "C", "C", "[", "$", "]", ";", "C", "[", "$", "]", ",", "[",
+                "$", "]", "C", "}"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_block_copolymer() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$]CC[$]}{[$]CC(C)[$]}"),
+            [
+                "{", "[", "$", "]", "C", "C", "[", "$", "]", "}", "{", "[", "$", "]", "C", "C",
+                "(", "C", ")", "[", "$", "]", "}"
+            ]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "CC{[$]CC[$]}CC"),
+            ["C", "C", "{", "[", "$", "]", "C", "C", "[", "$", "]", "}", "C", "C"]
+        );
+    }
+
+    #[test]
+    fn test_graft_copolymer_nested() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$]CC(C{[<]CC[>]})[$]}"),
+            [
+                "{", "[", "$", "]", "C", "C", "(", "C", "{", "[", "<", "]", "C", "C", "[", ">",
+                "]", "}", ")", "[", "$", "]", "}"
+            ]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$]CC{[<]C[>]}[$]}"),
+            [
+                "{", "[", "$", "]", "C", "C", "{", "[", "<", "]", "C", "[", ">", "]", "}", "[",
+                "$", "]", "}"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_fragment_reference() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(get_split_tokens(&pretok, "[#PEG]"), ["[", "#PEG", "]"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "[#Styrene]"),
+            ["[", "#Styrene", "]"]
+        );
+        assert_eq!(get_split_tokens(&pretok, "[#+]"), ["[", "#+", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[#PEG-1]"), ["[", "#PEG-1", "]"]);
+        assert_eq!(get_split_tokens(&pretok, "[#A]"), ["[", "#A", "]"]);
+        assert_eq!(
+            get_split_tokens(&pretok, "{[$][#Styrene][$]}"),
+            ["{", "[", "$", "]", "[", "#Styrene", "]", "[", "$", "]", "}"]
+        );
+    }
+
+    #[test]
+    fn test_fragment_definition_expansion() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "C([#R]).{#R=CO}"),
+            ["C", "(", "C", "O", ")"]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "{[#A]CC[#B]}.{#A=[<]}.{#B=[>]}"),
+            ["{", "[", "<", "]", "C", "C", "[", ">", "]", "}"]
+        );
+    }
+
+    #[test]
+    fn test_fragment_definitions_do_not_expand_bare_labels() {
+        let pretok = BigSmirkPreTokenizer::default();
+        let tokens = get_split_tokens(
+            &pretok,
+            "A([$1[<1]1])R(A'[$1[>1]1])(A[$1[<1]2])A'[$1[>1]2].{#A=C}.{#A'=C}.{#R=C}",
+        );
+
+        assert_eq!(
+            tokens
+                .iter()
+                .filter(|token| matches!(token.as_str(), "A" | "A'" | "R"))
+                .count(),
+            5
+        );
+        assert!(!tokens.iter().any(|token| token == "{" || token == "="));
+    }
+
+    #[test]
+    fn test_reject_invalid_bracket_symbol_forms() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert!(!all_matches(&pretok, "[B|]"));
+        assert!(!all_matches(&pretok, "[C@@Hextra]"));
+        assert!(!all_matches(&pretok, "[$=]"));
+        assert!(!all_matches(&pretok, "[>#]"));
+        assert!(!all_matches(&pretok, "[$/]"));
+        assert!(!all_matches(&pretok, r"[$\]"));
+        assert!(!all_matches(&pretok, "[#PEG 1]"));
+    }
+
+    #[test]
+    fn test_mixed_smiles_bigsmiles() {
+        let pretok = BigSmirkPreTokenizer::default();
+        assert_eq!(
+            get_split_tokens(&pretok, "CCCC{[$]CC(c1ccccc1)[$]}CCCC"),
+            [
+                "C", "C", "C", "C", "{", "[", "$", "]", "C", "C", "(", "c", "1", "c", "c", "c",
+                "c", "c", "1", ")", "[", "$", "]", "}", "C", "C", "C", "C"
+            ]
+        );
+        assert_eq!(
+            get_split_tokens(&pretok, "CCCC{[$]CC[$]}CCCC.NCC"),
+            [
+                "C", "C", "C", "C", "{", "[", "$", "]", "C", "C", "[", "$", "]", "}", "C", "C",
+                "C", "C", ".", "N", "C", "C"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_opensmiles_spec() {
+        let pretok = BigSmirkPreTokenizer::default();
+        let mut opensmiles_examples = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        opensmiles_examples.push("test");
+        opensmiles_examples.push("opensmiles.smi");
+        let examples = fs::read_to_string(opensmiles_examples.as_path())
+            .expect("failed to open opensmiles.smi");
+        for line in examples.lines().filter(|x| !x.starts_with("#")) {
+            dbg!(&line);
+            assert!(all_matches(&pretok, line));
+        }
+    }
+
+    #[test]
+    fn test_bigsmiles_spec() {
+        let pretok = BigSmirkPreTokenizer::default();
+        let mut bigsmiles_examples = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        bigsmiles_examples.push("test");
+        bigsmiles_examples.push("bigsmiles.smi");
+        let examples =
+            fs::read_to_string(bigsmiles_examples.as_path()).expect("failed to open bigsmiles.smi");
+        let mut failures = Vec::new();
+        for (idx, line) in examples
+            .lines()
+            .enumerate()
+            .filter(|(_, x)| !x.starts_with("#") && !x.is_empty())
+        {
+            if !all_matches_after_fragment_expansion(&pretok, line) {
+                failures.push(format!("line {}: {}", idx + 1, line));
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "failed to tokenize BigSMILES fixtures:\n{}",
+            failures.join("\n")
+        );
+    }
+}

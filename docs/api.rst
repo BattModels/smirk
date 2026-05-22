@@ -33,7 +33,13 @@ API Reference
 
    .. seealso:: :py:meth:`transformers.PreTrainedTokenizerBase.batch_decode` for the 🤗 documentation
 
-.. autofunction:: smirk.SmirkSelfiesFast
+.. autoclass:: smirk.SmirkSelfiesFast
+   :special-members:
+   :members:
+
+.. autoclass:: smirk.SmirkBigSmilesFast
+   :special-members:
+   :members:
 
 .. autodata:: smirk.SPECIAL_TOKENS
 

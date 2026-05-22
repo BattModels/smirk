@@ -7,13 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- `SmirkBigSmilesFast` Tokenizer for BigSMILES line notation representation of polymers ([#8](https://github.com/BattModels/smirk/pull/8))
+
 ### Changed
 
 - Bumped GitHub Actions, Python, Rust, and documentation dependencies ([#10](https://github.com/BattModels/smirk/pull/10) -- [#24](https://github.com/BattModels/smirk/pull/24))
 
 ### Fixed
 
-- Build issue due to leading `./` in included file paths  ([#7](https://github.com/BattModels/smirk/pull/7))
+- Build issue due to leading `./` in included file paths ([#7](https://github.com/BattModels/smirk/pull/7))
 - Fixed Dependabot configuration ([#9](https://github.com/BattModels/smirk/pull/9))
 
 ## [v0.2.0](https://github.com/BattModels/smirk/tree/v0.2.0)

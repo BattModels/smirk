@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::gpe::{GpeTrainer, GPE};
-use crate::pre_tokenizers::{split_structure, SmirkPreTokenizer};
+use crate::pre_tokenizers::{split_structure, BigSmirkPreTokenizer, SmirkPreTokenizer};
 use crate::wrapper::{ModelWrapper, PreTokenizerWrapper, TrainerWrapper};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -51,7 +51,13 @@ fn normalizer() -> normalizers::Sequence {
 #[pymethods]
 impl SmirkTokenizer {
     #[new]
-    fn __new__() -> Self {
+    #[pyo3(signature = (bigsmiles = false))]
+    fn __new__(bigsmiles: bool) -> Self {
+        let pre_tokenizer: PreTokenizerWrapper = if bigsmiles {
+            BigSmirkPreTokenizer::default().into()
+        } else {
+            SmirkPreTokenizer::default().into()
+        };
         let tokenizer: Tokenizer = TokenizerBuilder::new()
             .with_model(
                 WordLevel::builder()
@@ -60,7 +66,7 @@ impl SmirkTokenizer {
                     .unwrap()
                     .into(),
             )
-            .with_pre_tokenizer(Some(SmirkPreTokenizer::default().into()))
+            .with_pre_tokenizer(Some(pre_tokenizer))
             .with_normalizer(Some(normalizer().into()))
             .with_decoder(Some(Fuse::default().into()))
             .build()
@@ -77,11 +83,17 @@ impl SmirkTokenizer {
     }
 
     #[staticmethod]
-    fn from_vocab(file: &str) -> Self {
+    #[pyo3(signature = (file, bigsmiles = false))]
+    fn from_vocab(file: &str, bigsmiles: bool) -> Self {
+        let pre_tokenizer: PreTokenizerWrapper = if bigsmiles {
+            BigSmirkPreTokenizer::default().into()
+        } else {
+            SmirkPreTokenizer::default().into()
+        };
         let model = WordLevel::from_file(file, "[UNK]".to_string()).unwrap();
         let tokenizer = TokenizerBuilder::new()
             .with_model(model.into())
-            .with_pre_tokenizer(Some(SmirkPreTokenizer::default().into()))
+            .with_pre_tokenizer(Some(pre_tokenizer))
             .with_normalizer(Some(normalizer().into()))
             .with_decoder(Some(Fuse::new().into()))
             .build()
@@ -463,5 +475,61 @@ impl From<tokenizers::Encoding> for Encoding {
                 .map(|&(start, end)| (start as u64, end as u64))
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use tokenizers::PreTokenizer;
+
+    use super::*;
+
+    fn assert_bigsmiles_pre_tokenizer(tokenizer: &SmirkTokenizer) {
+        assert!(matches!(
+            tokenizer.tokenizer.get_pre_tokenizer(),
+            Some(PreTokenizerWrapper::BigSmirkPreTokenizer(_))
+        ));
+    }
+
+    fn get_splits(tokenizer: &SmirkTokenizer, text: &str) -> Vec<String> {
+        let mut pretokenized = PreTokenizedString::from(text);
+        tokenizer
+            .tokenizer
+            .get_pre_tokenizer()
+            .unwrap()
+            .pre_tokenize(&mut pretokenized)
+            .unwrap();
+        pretokenized
+            .get_splits(OffsetReferential::Original, OffsetType::Byte)
+            .into_iter()
+            .map(|(s, _, _)| s.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn new_selects_bigsmiles_pre_tokenizer() {
+        let tokenizer = SmirkTokenizer::__new__(true);
+        assert_bigsmiles_pre_tokenizer(&tokenizer);
+        assert_eq!(
+            get_splits(&tokenizer, "{[$]CC[$]}"),
+            ["{", "[", "$", "]", "C", "C", "[", "$", "]", "}"]
+        );
+    }
+
+    #[test]
+    fn from_vocab_selects_bigsmiles_pre_tokenizer() {
+        let mut vocab_file = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        vocab_file.push("python");
+        vocab_file.push("smirk");
+        vocab_file.push("vocab_bigsmiles.json");
+
+        let tokenizer = SmirkTokenizer::from_vocab(vocab_file.to_str().unwrap(), true);
+        assert_bigsmiles_pre_tokenizer(&tokenizer);
+        assert_eq!(
+            get_splits(&tokenizer, "{[$]CC[$]}"),
+            ["{", "[", "$", "]", "C", "C", "[", "$", "]", "}"]
+        );
     }
 }
