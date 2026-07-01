@@ -36,7 +36,7 @@ docs = [
     "furo==2025.12.19",
     "jupyter~=1.1",
     "myst-nb>=1.2,<1.4",
-    "sphinx~=7.4",
+    "sphinx>=7.4,<9.0",
     "sphinx-argparse==0.4.0",
     "sphinx-autobuild==2024.10.3",
     "sphinx-copybutton==0.5.2",
