@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-07-30
+
 ### Added
 
 - `SmirkBigSmilesFast` Tokenizer for BigSMILES line notation representation of polymers ([#8])
@@ -74,7 +76,8 @@ Preprint posted: [arXiv:2409.15370v1](https://arxiv.org/abs/2409.15370v1)
 - Initial tagged version of smirk
 
 <!-- Versions -->
-[unreleased]: https://github.com/BattModels/smirk/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/BattModels/smirk/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/BattModels/smirk/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/BattModels/smirk/tree/v0.2.0
 [v0.1.1]: https://github.com/BattModels/smirk/tree/v0.1.1
 [v0.1.0]: https://github.com/BattModels/smirk/tree/v0.1.0
