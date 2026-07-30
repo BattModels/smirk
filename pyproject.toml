@@ -24,7 +24,7 @@ changelog = "https://github.com/BattModels/smirk/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
-    "pytest~=8.3",
+    "pytest>=8.3,<10.0",
     "parameterized==0.9.0",
     "ruff~=0.9.4",
     "torch~=2.0",
