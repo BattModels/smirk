@@ -33,9 +33,16 @@ Enabling complete coverage of [OpenSMILES] with a vocabulary of 167 tokens.
 .. toctree::
    :maxdepth: 2
    :titlesonly:
-   :caption: Contents:
+   :caption: Tutorials
 
    smirk_demo
+   BigSMILES tutorial <big_smirk_demo>
+
+.. toctree::
+   :maxdepth: 2
+   :titlesonly:
+   :caption: Reference
+
    api
    developer
    changelog

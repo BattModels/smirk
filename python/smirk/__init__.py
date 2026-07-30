@@ -349,11 +349,11 @@ class SmirkBigSmilesFast(SmirkTokenizerFast):
         https://olsenlabmit.github.io/BigSMILES/docs/line_notation.html.
 
         .. warning::
-        SmirkBigSmilesFast supports explicit BigSMILES fragment definitions
-        such as ``[#R].{#R=...}``, but it does not load or expand the
-        predefined Common Repeat Unit table from the BigSMILES v1.1
-        documentation. Common repeat unit placeholders must therefore be
-        defined explicitly.
+           SmirkBigSmilesFast supports explicit BigSMILES fragment definitions
+           such as ``[#R].{#R=...}``, but it does not load or expand the
+           predefined Common Repeat Unit table from the BigSMILES v1.1
+           documentation. Common repeat unit placeholders must therefore be
+           defined explicitly.
 
         :param tokenizer_file: Path to a JSON serialize SmirkTokenizerFast tokenizers
         :param kwargs: Additional kwargs are passed to :py:class:`SmirkTokenizerFast`

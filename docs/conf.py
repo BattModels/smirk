@@ -9,6 +9,11 @@ import importlib.metadata
 import os
 import sys
 
+if sys.version_info >= (3, 10):
+    import truststore
+
+    truststore.inject_into_ssl()
+
 sys.path.insert(0, os.path.abspath("."))
 from linkcode import linkcode_resolve
 
