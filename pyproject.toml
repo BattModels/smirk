@@ -12,7 +12,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-    "transformers >=4.40,<5",
+    "transformers >=4.40,<6",
 ]
 
 [project.urls]
@@ -45,7 +45,7 @@ docs = [
     "datasets>=3.3,<6.0",
     "torch~=2.0",
     "rdkit==2026.3.4",
-    "transformers>=4.48.2,<4.58.0",
+    "transformers>=4.48.2,<5.15.0",
     "truststore>=0.10.4; python_version >= '3.10'",
 ]
 
