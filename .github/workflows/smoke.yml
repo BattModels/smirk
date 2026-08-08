@@ -1,0 +1,42 @@
+name: Smirk Smoke Test
+on:
+  schedule:
+    - cron: 47 8 * * 1
+      timezone: America/Denver
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Latest stable release
+            uv-args: --with smirk --no-project --no-binary-package smirk
+          - name: Current main branch
+            uv-args: --no-dev --no-binary-package smirk
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - name: Install the latest stable Python
+        run: uv python install
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Report toolchain versions
+        run: |
+          uv run --no-project --managed-python python --version
+          rustc --version
+          cargo --version
+      - name: Run smoke tests
+        run: >-
+          uv run --isolated --managed-python ${{ matrix.uv-args }}
+          test/test_smoke.py
