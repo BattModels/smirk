@@ -21,19 +21,33 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --benches --verbose --all
   test_python:
-    name: Test Python
+    name: Python ${{ matrix.python }} / ${{ matrix.transformers }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python: "3.9"
+            transformers: transformers>=4.40,<5
+          - python: "3.13"
+            transformers: transformers>=4.40,<5
+          - python: "3.10"
+            transformers: transformers>=5,<6
+          - python: "3.14"
+            transformers: transformers>=5,<6
     steps:
       - uses: actions/checkout@v7
       - name: Install uv and set the python version
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python }}
           enable-cache: true
           cache-dependency-glob: pyproject.toml
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: install project
         run: uv sync --all-extras --dev
+      - name: Select Transformers version
+        run: uv pip install --upgrade '${{ matrix.transformers }}'
       - name: pytest
-        run: uv run pytest
+        run: uv run --no-sync pytest

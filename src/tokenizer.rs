@@ -14,8 +14,8 @@ use tokenizers::processors::template::{Template, TemplateProcessing};
 use tokenizers::{self, normalizers, DecoderWrapper, Model, NormalizerWrapper};
 use tokenizers::{
     AddedToken, EncodeInput, OffsetReferential, OffsetType, PaddingDirection, PaddingParams,
-    PaddingStrategy, PostProcessorWrapper, PreTokenizedString, PreTokenizer, TokenizerBuilder,
-    TokenizerImpl, TruncationDirection, TruncationParams, TruncationStrategy,
+    PaddingStrategy, PostProcessor, PostProcessorWrapper, PreTokenizedString, PreTokenizer,
+    TokenizerBuilder, TokenizerImpl, TruncationDirection, TruncationParams, TruncationStrategy,
 };
 
 type Tokenizer = TokenizerImpl<
@@ -177,6 +177,13 @@ impl SmirkTokenizer {
         } else {
             Ok("{}".to_string())
         }
+    }
+
+    #[pyo3(signature = (pair = false))]
+    fn num_special_tokens_to_add(&self, pair: bool) -> usize {
+        self.tokenizer
+            .get_post_processor()
+            .map_or(0, |processor| processor.added_tokens(pair))
     }
 
     #[setter]

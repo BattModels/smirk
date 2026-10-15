@@ -1,4 +1,15 @@
 from smirk import SmirkSelfiesFast
+from transformers import AutoTokenizer
+
+
+def test_save_and_load(tmp_path):
+    tok = SmirkSelfiesFast()
+    texts = ["[C][O][C]", "[N][#N]"]
+    tok.save_pretrained(tmp_path)
+    loaded = AutoTokenizer.from_pretrained(tmp_path)
+    assert loaded(texts, padding=True) == tok(texts, padding=True)
+    assert loaded.get_vocab() == tok.get_vocab()
+    assert loaded.special_tokens_map == tok.special_tokens_map
 
 
 def test_wikipedia():
