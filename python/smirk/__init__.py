@@ -78,6 +78,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
     def __repr__(self):
         return self.__class__.__name__
 
+    @property
     def is_fast(self):
         return True
 
@@ -158,7 +159,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         )
 
     def num_special_tokens_to_add(self, pair: bool = False) -> int:
-        return len(self.build_inputs_with_special_tokens([], [] if pair else None))
+        return self._tokenizer.num_special_tokens_to_add(pair)
 
     def __check_encode_kwargs(self, kwargs):
         assert (
@@ -185,9 +186,16 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         return_length: bool = False,
         verbose: bool = True,
         split_special_tokens: bool = False,
+        padding_side: Optional[str] = None,
         **kwargs,
     ) -> BatchEncoding:
-        self.__check_encode_kwargs(kwargs)
+        self.__check_encode_kwargs(
+            {
+                **kwargs,
+                "is_split_into_words": is_split_into_words,
+                "split_special_tokens": split_special_tokens,
+            }
+        )
 
         # Set the tokenizer's padding and truncation strategy
         self.set_truncation_and_padding(
@@ -196,6 +204,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
             max_length=max_length,
             stride=stride,
             pad_to_multiple_of=pad_to_multiple_of,
+            padding_side=padding_side,
         )
 
         encoding = self._tokenizer.encode_batch(
@@ -219,6 +228,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
         max_length: Optional[int] = None,
         stride: int = 0,
         pad_to_multiple_of: Optional[int] = None,
+        padding_side: Optional[str] = None,
     ):
         """Configure truncation and padding options for the tokenizer"""
         if truncation_strategy == TruncationStrategy.DO_NOT_TRUNCATE:
@@ -242,7 +252,7 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
             target = {
                 "length": length,
                 "pad_to_multiple_of": pad_to_multiple_of,
-                "direction": self.padding_side,
+                "direction": padding_side or self.padding_side,
                 "pad_id": self.pad_token_id,
                 "pad_token": self.pad_token,
                 "pad_type_id": self.pad_token_type_id,
@@ -252,18 +262,20 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
 
     def _encode_plus(
         self,
-        text: Union[TextInput],
+        text: Union[TextInput, List[TextInput]],
         text_pair: Optional = None,
         return_tensors: Optional[bool] = None,
         **kwargs,
     ) -> BatchEncoding:
         assert text_pair is None, "Not implemented"
+        # Transformers v5 routes both single inputs and batches through this method.
+        is_batched = isinstance(text, (list, tuple))
         batched_output = self._batch_encode_plus(
-            [text],
+            text if is_batched else [text],
             return_tensors=return_tensors,
             **kwargs,
         )
-        if return_tensors is None:
+        if return_tensors is None and not is_batched:
             return BatchEncoding(
                 {k: v[0] for k, v in batched_output.items()},
                 batched_output.encodings,
@@ -303,6 +315,8 @@ class SmirkTokenizerFast(PreTrainedTokenizerBase):
 
     def _decode(self, token_ids, **kwargs):
         skip_special_tokens = kwargs.get("skip_special_tokens", False)
+        if isinstance(token_ids, int):
+            token_ids = [token_ids]
         return self._tokenizer.decode(
             token_ids, skip_special_tokens=skip_special_tokens
         )
@@ -373,6 +387,9 @@ class SmirkBigSmilesFast(SmirkTokenizerFast):
             tokenizer = rs_smirk.SmirkTokenizer(bigsmiles=True)
 
         super().__init__(tokenizer=tokenizer, **kwargs)
+
+
+AutoTokenizer.register("SmirkBigSmiles", fast_tokenizer_class=SmirkBigSmilesFast)
 
 
 def SmirkSelfiesFast(

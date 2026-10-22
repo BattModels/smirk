@@ -15,7 +15,9 @@ def check_save(tokenizer):
     """Check that the tokenzier can be saved"""
     with TemporaryDirectory() as save_directory:
         files = tokenizer.save_pretrained(save_directory)
-        assert len(files) == 3
+        assert {"tokenizer_config.json", "tokenizer.json"} <= {
+            Path(file).name for file in files
+        }
         for file in files:
             file = Path(file)
             assert file.is_file()
@@ -68,6 +70,28 @@ def test_post_processor():
     state = json.loads(tok.to_str())
     assert state["post_processor"] == pp
     check_save(tok)
+
+
+@pytest.mark.parametrize(
+    "tokenizer_class", [smirk.SmirkTokenizerFast, smirk.SmirkBigSmilesFast]
+)
+@pytest.mark.parametrize("template,expected", [(None, 0), ("[CLS] $0 [SEP]", 2)])
+def test_num_special_tokens_to_add(tokenizer_class, template, expected):
+    tok = tokenizer_class(template=template)
+    encoded = tok(
+        "C", padding="max_length", max_length=8, return_special_tokens_mask=True
+    )
+    state = tok.to_str()
+    assert tok.num_special_tokens_to_add() == expected
+    assert tok.to_str() == state
+    unpadded_mask = [
+        special
+        for special, attention in zip(
+            encoded["special_tokens_mask"], encoded["attention_mask"]
+        )
+        if attention
+    ]
+    assert sum(unpadded_mask) == expected
 
 
 def check_unknown(tokenizer):

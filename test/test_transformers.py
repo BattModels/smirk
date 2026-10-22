@@ -16,6 +16,12 @@ from transformers import (
 
 from .test_smirk_gpe import SMILE_TEST_FILE
 
+EXTRA_SPECIAL_TOKENS_KEY = (
+    "additional_special_tokens"
+    if "additional_special_tokens" in PreTrainedTokenizerBase.SPECIAL_TOKENS_ATTRIBUTES
+    else "extra_special_tokens"
+)
+
 
 def get_smirk_gpe():
     return smirk.train_gpe([str(SMILE_TEST_FILE)])
@@ -41,13 +47,20 @@ def require_torch(test_case):
             "name": "smirk-gpe",
             "tokenizer": get_smirk_gpe(),
         },
+        {
+            "name": "bigsmirk",
+            "tokenizer": smirk.SmirkBigSmilesFast(),
+        },
     ],
     class_name_func=transformers_testname,
 )
 class TestTransformers:
     name: str
     tokenizer: PreTrainedTokenizerBase
-    tokenizer_class = smirk.SmirkTokenizerFast
+
+    @property
+    def tokenizer_class(self):
+        return type(self.tokenizer)
 
     def get_tokenizer(self, *args, **kwargs):
         with TemporaryDirectory() as tmpdirname:
@@ -66,6 +79,9 @@ class TestTransformers:
     def test_model_input_names_signature(self):
         assert self.tokenizer.model_input_names[0] == "input_ids"
 
+    def test_is_fast(self):
+        assert self.tokenizer.is_fast is True
+
     def test_has_init_kwargs(self):
         tokenizer = self.tokenizer
         assert hasattr(tokenizer, "init_kwargs")
@@ -75,17 +91,19 @@ class TestTransformers:
         assert hasattr(tokenizer, "model_max_length")
         assert tokenizer.model_max_length > 0
 
-    def test_auto_tokenizer(self):
+    def test_auto_tokenizer(self, tmp_path):
         tokenizer = self.get_tokenizer()
-        with TemporaryDirectory() as tmpdir:
-            tokenizer.save_pretrained(tmpdir)
-            tok = AutoTokenizer.from_pretrained(tmpdir)
-            assert isinstance(tok, self.tokenizer_class)
-            assert isinstance(tok, PreTrainedTokenizerBase)
-            assert tok.to_str() == tokenizer.to_str()
+        # Use a predictable path: early v5 releases infer model types from path names.
+        tokenizer.save_pretrained(tmp_path)
+        tok = AutoTokenizer.from_pretrained(tmp_path)
+        assert isinstance(tok, self.tokenizer_class)
+        assert isinstance(tok, PreTrainedTokenizerBase)
+        assert tok.to_str() == tokenizer.to_str()
 
-    def test_save_and_load_tokenizer(self, tokenizer=None):
-        tokenizer = tokenizer or self.get_tokenizer()
+    def test_save_and_load_tokenizer(self):
+        self.check_save_and_load_tokenizer(self.get_tokenizer())
+
+    def check_save_and_load_tokenizer(self, tokenizer):
         with TemporaryDirectory() as tmpdir:
             tokenizer.save_pretrained(tmpdir)
             state = tokenizer.to_str()
@@ -117,8 +135,8 @@ class TestTransformers:
         SPECIAL_TOKEN_2 = "[SPECIAL_TOKEN_2]"
         tokenizer.add_tokens([SPECIAL_TOKEN_1], special_tokens=True)
         tokenizer.add_special_tokens(
-            {"additional_special_tokens": [SPECIAL_TOKEN_2]},
-            replace_additional_special_tokens=False,
+            {EXTRA_SPECIAL_TOKENS_KEY: [SPECIAL_TOKEN_2]},
+            False,  # Append; the keyword name differs between Transformers v4 and v5.
         )
         token_1 = tokenizer.tokenize(SPECIAL_TOKEN_1)
         token_2 = tokenizer.tokenize(SPECIAL_TOKEN_2)
@@ -128,7 +146,7 @@ class TestTransformers:
         assert token_2[0] == SPECIAL_TOKEN_2
 
         # Check that tokens persist after saving and loading
-        tok2 = self.test_save_and_load_tokenizer(tokenizer)
+        tok2 = self.check_save_and_load_tokenizer(tokenizer)
         assert tok2.tokenize(SPECIAL_TOKEN_1) == [SPECIAL_TOKEN_1]
         assert tok2.tokenize(SPECIAL_TOKEN_2) == [SPECIAL_TOKEN_2]
 
@@ -155,8 +173,8 @@ class TestTransformers:
             assert hasattr(tokenizer, attr)
             assert hasattr(tokenizer, attr + "_id")
 
-        assert hasattr(tokenizer, "additional_special_tokens")
-        assert hasattr(tokenizer, "additional_special_tokens_ids")
+        assert hasattr(tokenizer, EXTRA_SPECIAL_TOKENS_KEY)
+        assert hasattr(tokenizer, EXTRA_SPECIAL_TOKENS_KEY + "_ids")
 
         attributes_list = [
             "model_max_length",
@@ -199,7 +217,7 @@ class TestTransformers:
     def test_special_tokens_mask(self):
         text = self.get_batch()[0]
         enc = self.tokenizer.encode(text, add_special_tokens=False)
-        encode_dict = self.tokenizer.encode_plus(
+        encode_dict = self.tokenizer(
             text,
             add_special_tokens=True,
             return_special_tokens_mask=True,
@@ -246,14 +264,44 @@ class TestTransformers:
         batch = self.get_batch()
 
         # Test not batched
-        enc_1 = tokenizer.encode_plus(batch[0])
+        enc_1 = tokenizer.encode(batch[0])
         enc_2 = tokenizer(batch[0])
-        assert enc_1 == enc_2
+        assert enc_1 == enc_2["input_ids"]
 
         # Test batched
-        enc_1 = tokenizer.batch_encode_plus(batch)
+        enc_1 = [tokenizer(text) for text in batch]
         enc_2 = tokenizer(batch)
-        assert enc_1 == enc_2
+        assert enc_1 == dol2lod(enc_2)
+
+    @pytest.mark.parametrize("batch_type", [list, tuple])
+    @pytest.mark.parametrize("texts", [[], ["CCO"], ["CCO", "C"]])
+    def test_batch_shape(self, batch_type, texts):
+        tokenizer = self.get_tokenizer()
+        encoded = tokenizer(batch_type(texts))
+        assert encoded["input_ids"] == [tokenizer.encode(text) for text in texts]
+        assert encoded["attention_mask"] == [
+            [1] * len(ids) for ids in encoded["input_ids"]
+        ]
+
+    def test_decode_single_token(self):
+        tokenizer = self.get_tokenizer()
+        assert tokenizer.decode(tokenizer.convert_tokens_to_ids("C")) == "C"
+
+    @pytest.mark.skipif(
+        hasattr(PreTrainedTokenizerBase, "encode_plus"),
+        reason="Unified batch encode/decode API requires Transformers v5",
+    )
+    def test_unified_batch_encode_decode(self):
+        tokenizer = self.get_tokenizer()
+        texts = ["C.C", "C"]
+        ids = tokenizer.encode(texts, padding=True, return_tensors="np")
+        assert ids.shape == (2, 3)
+        assert tokenizer.decode(ids, skip_special_tokens=True) == texts
+
+    @pytest.mark.parametrize("option", ["is_split_into_words", "split_special_tokens"])
+    def test_unsupported_encoding_options(self, option):
+        with pytest.raises(AssertionError, match="Not implemented"):
+            self.tokenizer(["C", "O"], **{option: True})
 
     @require_torch
     def test_torch_encode(self):
@@ -303,11 +351,9 @@ class TestTransformers:
         assert padded_enc == (base_enc + [tokenizer.pad_token_id] * 10)
 
         # Repeat for a batch
-        base_enc = tokenizer.batch_encode_plus(batch, padding=False)
+        base_enc = tokenizer(batch, padding=False)
         max_length = max(len(x) for x in base_enc["input_ids"]) + 10
-        padded_batch = tokenizer.batch_encode_plus(
-            batch, padding="max_length", max_length=max_length
-        )
+        padded_batch = tokenizer(batch, padding="max_length", max_length=max_length)
         assert all(len(x) == max_length for x in padded_batch["input_ids"])
 
     def test_padding_multiple_of(self):
@@ -322,13 +368,13 @@ class TestTransformers:
     def test_padding_side(self, side):
         tokenizer = self.get_tokenizer()
         batch = self.get_batch()
-        enc = tokenizer.batch_encode_plus(batch, padding=False)
+        enc = tokenizer(batch, padding=False)
         assert not all(len(enc["input_ids"][0]) == len(x) for x in enc["input_ids"])
         max_length = max(len(x) for x in enc["input_ids"])
 
         # Change padding side
         tokenizer.padding_side = side
-        padded = tokenizer.batch_encode_plus(batch, padding=True, padding_side=side)
+        padded = tokenizer(batch, padding=True, padding_side=side)
         pad_token_id = tokenizer.pad_token_id
         for bdx in range(len(batch)):
             ids = padded["input_ids"][bdx]
@@ -339,16 +385,24 @@ class TestTransformers:
             else:
                 assert ids == (ref_ids + n * [pad_token_id])
 
+    def test_padding_side_override(self):
+        tokenizer = self.get_tokenizer()
+        tokenizer.padding_side = "right"
+        texts = ["C.C", "C"]
+        left = tokenizer(texts, padding=True, padding_side="left")
+        assert left["attention_mask"] == [[1, 1, 1], [0, 0, 1]]
+        assert tokenizer.padding_side == "right"
+        right = tokenizer(texts, padding=True)
+        assert right["attention_mask"] == [[1, 1, 1], [1, 0, 0]]
+
     @pytest.mark.parametrize("side", ["left", "right"])
     def test_padding_attention(self, side):
         tokenizer = self.get_tokenizer()
         batch = self.get_batch()
         tokenizer.padding_side = side
-        enc = tokenizer.batch_encode_plus(
-            batch, padding=False, return_attention_mask=True
-        )
+        enc = tokenizer(batch, padding=False, return_attention_mask=True)
         max_length = max(len(x) for x in enc["input_ids"])
-        padded = tokenizer.batch_encode_plus(
+        padded = tokenizer(
             batch, padding=True, padding_side=side, return_attention_mask=True
         )
         pad_token_id = tokenizer.pad_token_id
@@ -386,14 +440,14 @@ class TestTransformers:
         assert len(trunc) == trunc_len
         assert trunc == enc[-trunc_len:]
 
-    def test_batch_encode_plus_batch_sequence_length(self):
+    def test_batch_sequence_length(self):
         tokenizer = self.tokenizer
         batch = self.get_batch()
         for text in batch:
             assert tokenizer.pad_token not in text
 
-        enc = [tokenizer.encode_plus(text) for text in batch]
-        enc_batch = tokenizer.batch_encode_plus(batch, padding=False)
+        enc = [tokenizer(text) for text in batch]
+        enc_batch = tokenizer(batch, padding=False)
         assert isinstance(enc_batch, Mapping) and all(
             isinstance(x, list) for x in enc_batch.values()
         )
@@ -401,21 +455,21 @@ class TestTransformers:
 
         max_length = max([len(x["input_ids"]) for x in enc])
         enc_padded = [
-            tokenizer.encode_plus(text, max_length=max_length, padding="max_length")
+            tokenizer(text, max_length=max_length, padding="max_length")
             for text in batch
         ]
-        env_batch_padded = tokenizer.batch_encode_plus(batch, padding=True)
+        env_batch_padded = tokenizer(batch, padding=True)
         assert enc_padded == dol2lod(env_batch_padded)
 
         # Check that longest doesn't change with max length
-        enc_batch_padded_2 = tokenizer.batch_encode_plus(
+        enc_batch_padded_2 = tokenizer(
             batch, max_length=max_length + 10, padding="longest"
         )
         assert dol2lod(enc_batch_padded_2) == dol2lod(env_batch_padded)
 
         # Check that no padding is doesn't change with max length
-        enc_batch_no_padding = tokenizer.batch_encode_plus(batch, padding=False)
-        enc_batch_no_padding_2 = tokenizer.batch_encode_plus(
+        enc_batch_no_padding = tokenizer(batch, padding=False)
+        enc_batch_no_padding_2 = tokenizer(
             batch, max_length=max_length + 10, padding=False
         )
         assert dol2lod(enc_batch_no_padding) == dol2lod(enc_batch_no_padding_2)
@@ -431,7 +485,7 @@ class TestTransformers:
     def test_offsets_mapping(self):
         tokenizer = self.tokenizer
         text = self.get_batch()[0]
-        tokens_with_offsets = tokenizer.encode_plus(
+        tokens_with_offsets = tokenizer(
             text,
             return_offsets_mapping=True,
             return_special_tokens_mask=True,
